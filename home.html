@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Bienvenido - Plataforma Educativa</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background-color: #0f0f0f;
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #1f1f1f;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        nav a {
+            color: #ddd;
+            margin-left: 20px;
+            text-decoration: none;
+        }
+
+        nav a:hover {
+            color: #1e90ff;
+        }
+
+        .welcome-container {
+            padding: 60px 40px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .welcome-container h1 {
+            font-size: 2em;
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .welcome-container p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            color: #ccc;
+        }
+
+        .buttons {
+            margin-top: 30px;
+        }
+
+        .buttons button {
+            margin-right: 15px;
+            padding: 12px 20px;
+            font-size: 1em;
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .buttons button:hover {
+            background-color: #005fa3;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9em;
+            background-color: #1f1f1f;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">VALKIRIANS | HUB EDUCACIONAL</div>
+    <nav>
+        <a href="home.html">Inicio</a>
+        <a href="quiz.html">Mis Quices</a>
+        <a href="#">Progreso</a>
+        <a href="index.html">Cerrar sesión</a>
+    </nav>
+</header>
+
+<main class="welcome-container">
+    <h1>Te damos la bienvenida de nuevo,<br> <span id="username">Usuario</span></h1>
+    <p>
+        Domine conceptos clave a su propio ritmo y según su disponibilidad. Ya sea que tenga 15 minutos o una hora, puede desarrollar aptitudes prácticas mediante módulos y rutas interactivas.
+        También puede registrarse para aprender de un instructor. Aprenda y crezca a su manera.
+    </p>
+
+    <div class="buttons">
+        <button onclick="location.href='quiz.html'">Explorar rutas de acceso</button>
+        <button>Personalizar mi ruta de acceso</button>
+    </div>
+</main>
+
+<footer>
+    Hub Educacional — Argentina 2025
+</footer>
+
+<script>
+    // Mostrar el nombre del usuario si fue guardado en login
+    const user = localStorage.getItem('username');
+    if (user) {
+        document.getElementById('username').textContent = user.toUpperCase();
+    }
+</script>
+
+</body>
+</html>
