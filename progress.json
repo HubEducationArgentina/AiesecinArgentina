@@ -1,0 +1,4 @@
+[
+  { "username": "juan", "area": "MXP", "currentXP": 100, "level": 1 },
+  { "username": "Ana", "area": "OGX",  "currentXP": 1500, "level": 1 }
+]
