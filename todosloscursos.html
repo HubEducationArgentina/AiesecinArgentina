@@ -249,6 +249,64 @@
     };
   });
 
+  // --- BUSCADOR (poner justo después de crear `items` y antes de render(items)) ---
+  const buscador = document.getElementById('buscadorArchivos');
+  const limpiarBtn = document.getElementById('limpiarBusqueda');
+
+  // debounce simple
+  function debounce(fn, wait = 250) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  // función que aplica el filtro y re-renderiza
+  function applyFilter(q) {
+    const qnorm = norm(q || '');
+    if (!qnorm) {
+      render(items);
+      return;
+    }
+    const filtrados = items.filter(it => it._search.includes(qnorm));
+    render(filtrados);
+  }
+
+  // listener con debounce en input
+  if (buscador) {
+    buscador.addEventListener('input', debounce((e) => {
+      applyFilter(e.target.value);
+    }, 180));
+    // tecla Escape para limpiar rápido
+    buscador.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        buscador.value = '';
+        applyFilter('');
+      }
+    });
+  } else {
+    console.warn('Buscador no encontrado: id="buscadorArchivos"');
+  }
+
+  // limpiar botón (X) — pone el campo vacío y reinicia la lista
+  if (limpiarBtn) {
+    limpiarBtn.addEventListener('click', () => {
+      if (buscador) buscador.value = '';
+      applyFilter('');
+      buscador && buscador.focus();
+    });
+  } else {
+    console.info('No se detectó el botón limpiarBusqueda (id="limpiarBusqueda").');
+  }
+
+  // Si quieres, puedes inicializar el input vacío (útil si la página recarga con valor)
+  if (buscador && buscador.value.trim()) {
+    applyFilter(buscador.value);
+  }
+  // --- FIN BUSCADOR ---
+
+    
   // Simple generic icons
   const GENERIC_ICONS = {
     pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -414,6 +472,7 @@
 
 </body>
 </html>
+
 
 
 
