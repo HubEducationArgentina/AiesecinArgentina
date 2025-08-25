@@ -130,7 +130,6 @@
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
 (async function initArchivosCursos() {
-  // IDs que debe tener tu HTML (ajusta si tus IDs son distintos)
   const contenedor = document.getElementById("archivosCursos");
   const modal = document.getElementById("archivoModal");
   const visor = document.getElementById("visorArchivo");
@@ -142,13 +141,20 @@
     return;
   }
 
-  // Config GitHub
-  const OWNER = "HubEducationArgentina"; // tu usuario/org
-  const REPO = "AiesecinArgentina"; // tu repo
-  const PATH = "archivos_cursos"; // carpeta dentro del repo
-  const BRANCH = "main"; // cambia si tu rama es "master"
+  // CONFIG - ajusta a tu repo
+  const OWNER = "HubEducationArgentina";
+  const REPO = "AiesecinArgentina";
+  const PATH = "archivos_cursos";
+  const BRANCH = "main";
 
-  // Utils
+  // estilos mínimos para la thumb (si lo preferís mover a style.css)
+  const style = document.createElement('style');
+  style.textContent = `
+    .archivo-card-thumb { width:100%; height:140px; object-fit:cover; border-radius:8px; background:#eee; display:block; margin-bottom:.75rem; }
+    .archivo-card-body { padding: 0 .25rem; }
+  `;
+  document.head.appendChild(style);
+
   const prettyName = (s) => {
     const base = decodeURIComponent(String(s || '')).split('/').pop()
       .replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
@@ -160,45 +166,62 @@
     .toLowerCase().trim();
   const thumbCache = new Map();
 
-  // 1) try index.json
+  // ---------- Try manifest relative, then raw.githubusercontent, then GitHub API ----------
   async function tryJsonManifest() {
+    // 1) Ruta relativa en el sitio: ./archivos_cursos/index.json
     try {
-      const url = `${PATH}/index.json`;
-      const r = await fetch(url, { cache: 'no-store' });
-      if (!r.ok) {
-        console.info('index.json no encontrado (status ' + r.status + ')');
-        return null;
+      const urlRel = `${PATH}/index.json`;
+      console.info('Intentando manifest relativo:', urlRel);
+      let r = await fetch(urlRel, { cache: 'no-store' });
+      if (r.ok) {
+        const arr = await r.json();
+        if (Array.isArray(arr)) return arr.map(f => ({ nombre: prettyName(f), archivo: `${PATH}/${f}` }));
+      } else {
+        console.info('manifest relativo no encontrado (status ' + r.status + ')');
       }
-      const arr = await r.json();
-      if (!Array.isArray(arr)) return null;
-      return arr.filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
-        .map(f => ({
-          nombre: prettyName(f),
-          archivo: `${PATH}/${f}`
-        }));
+
+      // 2) Intento raw.githubusercontent (útil si abres el HTML desde file:// o no usás GH Pages)
+      const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/index.json`;
+      console.info('Intentando manifest raw.githubusercontent:', rawUrl);
+      r = await fetch(rawUrl, { cache: 'no-store' });
+      if (r.ok) {
+        const arr2 = await r.json();
+        if (Array.isArray(arr2)) return arr2.map(f => ({ nombre: prettyName(f), archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f)}` }));
+      } else {
+        console.info('manifest raw.githubusercontent no encontrado (status ' + r.status + ')');
+      }
     } catch (e) {
       console.warn('tryJsonManifest error', e);
-      return null;
     }
+    return null;
   }
 
-  // 2) GitHub API fallback
   async function tryGitHubListing() {
     try {
       const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
-      const r = await fetch(api, { cache: 'no-store' });
+      console.info('Consultando GitHub API:', api);
+      const r = await fetch(api, {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+        cache: 'no-store'
+      });
       if (!r.ok) {
         console.warn('GitHub API returned', r.status, r.statusText);
+        // Si es 404/403, intentamos usar raw.githubusercontent para listar manualmente (no hay list API sin token)
+        if (r.status === 404) {
+          console.info('Comprobá que el repo/carpeta sean públicos y que OWNER/REPO/PATH estén correctos.');
+        }
         return null;
       }
       const arr = await r.json();
-      console.info('GitHub API files:', arr.map(a => a.name));
+      if (!Array.isArray(arr)) {
+        console.warn('Respuesta GitHub no es array:', arr);
+        return null;
+      }
       return arr
         .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
         .map(f => ({
           nombre: prettyName(f.name),
-          archivo: f.download_url ||
-            `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
+          archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
         }));
     } catch (e) {
       console.warn('tryGitHubListing error', e);
@@ -213,11 +236,10 @@
 
   if (!archivos.length) {
     contenedor.innerHTML = '<div class="archivos-empty">No se encontraron cursos activos.</div>';
-    console.info('No hay archivos listados en index.json ni en la API de GitHub.');
+    console.info('No hay archivos listados en index.json ni en la API de GitHub. Revisa OWNER/REPO/PATH/BRANCH y permisos del repo.');
     return;
   }
 
-  // Prepara items de búsqueda
   const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
     return {
@@ -227,27 +249,20 @@
     };
   });
 
-  // Generación de thumbs
+  // Simple generic icons
   const GENERIC_ICONS = {
     pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
-        <rect width="160" height="120" rx="8" fill="#dfe7f2"/>
-        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text>
-      </svg>`
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`
     ),
     ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
-        <rect width="160" height="120" rx="8" fill="#ffe4d6"/>
-        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text>
-      </svg>`
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`
     )
   };
 
   async function loadImageIfExists(url) {
     try {
-      const safe = encodeURI(url);
-      const r = await fetch(safe, { method: 'HEAD', cache: 'no-store' });
-      if (r.ok) return safe;
+      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (r.ok) return url;
     } catch (e) { }
     return null;
   }
@@ -294,18 +309,21 @@
     return GENERIC_ICONS.pdf;
   }
 
-  // IntersectionObserver para lazy-load
   const io = new IntersectionObserver(entries => {
     entries.forEach(async entry => {
       if (!entry.isIntersecting) return;
       const img = entry.target;
       io.unobserve(img);
       const item = img._itemRef;
-      img.src = await getThumb(item);
+      try {
+        img.src = await getThumb(item);
+      } catch (err) {
+        console.warn('Error cargando thumb', err);
+        img.src = GENERIC_ICONS.pdf;
+      }
     });
   }, { rootMargin: '200px 0px' });
 
-  // Render function
   function render(list) {
     contenedor.innerHTML = '';
     if (!list.length) {
@@ -337,20 +355,16 @@
       card.appendChild(body);
       card.addEventListener('click', () => abrirArchivo(item));
 
-      if (contenedor) contenedor.appendChild(card);
-      else console.error('contenedor desapareció antes de appendChild');
+      contenedor.appendChild(card);
     });
   }
 
-  // Inicial
   render(items);
 
-  // Modal open
   function abrirArchivo(item) {
     if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
     const extension = ext(item.archivo);
     const absolute = item.archivo;
-
     if (extension === 'ppt' || extension === 'pptx') {
       visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     } else {
@@ -389,7 +403,6 @@
 
 
 
-
 <footer class="footer-fixed">
     Hub Educacional — Argentina 2025
 </footer>
@@ -401,5 +414,6 @@
 
 </body>
 </html>
+
 
 
