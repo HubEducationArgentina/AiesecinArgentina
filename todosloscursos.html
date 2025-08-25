@@ -386,10 +386,21 @@ async function resolvePdfUrl(item) {
   return item.archivo;
 }
 
+// añadir cerca del inicio del IIFE (por ejemplo tras thumbCache)
+let lastPdfBlobUrl = null;
+
+// reemplaza abrirArchivo por esto
 async function abrirArchivo(item) {
   if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
   const extension = ext(item.archivo);
-  const absolute = item.archivo; // download_url o raw
+  const absolute = item.archivo;
+
+  // revocar blob previo si existe (libera memoria)
+  if (lastPdfBlobUrl) {
+    try { URL.revokeObjectURL(lastPdfBlobUrl); } catch(e) {}
+    lastPdfBlobUrl = null;
+  }
+
   if (extension === 'ppt' || extension === 'pptx') {
     visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     if (modal) modal.style.display = 'flex';
@@ -397,13 +408,44 @@ async function abrirArchivo(item) {
   }
 
   if (extension === 'pdf') {
-    // resolvemos la mejor URL disponible
-    const url = await resolvePdfUrl(item);
-    // si la URL final es raw.githubusercontent (o similar que fuerza descarga), todavía puede forzar la descarga.
-    // Pero los CDNs habituales (jsDelivr/raw.githack) suelen servir inline. Asignamos al iframe:
-    visor.src = url;
-    if (modal) modal.style.display = 'flex';
-    return;
+    try {
+      // intentamos obtener el PDF como ArrayBuffer
+      const resp = await fetch(absolute, { cache: 'no-store', credentials: 'omit' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const ab = await resp.arrayBuffer(); // si CORS lo permite, aquí tenemos bytes
+      const blob = new Blob([ab], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      lastPdfBlobUrl = blobUrl;
+      visor.src = blobUrl;
+      if (modal) modal.style.display = 'flex';
+      return;
+    } catch (err) {
+      console.warn('fetch PDF falló (CORS/otro). Haciendo fallback a CDNs/abrir en nueva pestaña', err);
+      // fallback: probar jsDelivr / raw.githack / raw.githubusercontent en orden
+      const filename = (item.filename || item.archivo.split('/').pop());
+      const candidates = [
+        `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+        `https://raw.githack.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+        `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+        item.archivo
+      ];
+      for (const url of candidates) {
+        try {
+          const h = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+          if (h.ok) {
+            // si HEAD responde ok, intentamos usar esa URL en el iframe
+            visor.src = url;
+            if (modal) modal.style.display = 'flex';
+            return;
+          }
+        } catch(e) {
+          // HEAD puede fallar por CORS; ignoramos y probamos el siguiente
+        }
+      }
+      // último recurso: abrir en pestaña nueva (el navegador decidirá mostrar o descargar)
+      window.open(absolute, '_blank');
+      return;
+    }
   }
 
   // fallback genérico
@@ -411,20 +453,18 @@ async function abrirArchivo(item) {
   if (modal) modal.style.display = 'flex';
 }
 
-
-
-
-
-  function cerrarModal(){
-    if (modal) modal.style.display = 'none';
-    if (visor) visor.src = '';
+// reemplaza cerrarModal por esto (asegura revocar blob)
+function cerrarModal(){
+  if (modal) modal.style.display = 'none';
+  if (visor) {
+    visor.src = '';
   }
-  if (cerrar) cerrar.addEventListener('click', cerrarModal);
-  window.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
+  if (lastPdfBlobUrl) {
+    try { URL.revokeObjectURL(lastPdfBlobUrl); } catch(e) {}
+    lastPdfBlobUrl = null;
+  }
+}
 
-})(); // end IIFE
-</script>
 
 
 
@@ -456,6 +496,7 @@ async function abrirArchivo(item) {
 
 </body>
 </html>
+
 
 
 
