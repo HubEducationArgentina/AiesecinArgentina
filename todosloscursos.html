@@ -325,17 +325,24 @@
   render(items);
 
   // Modal open
-  function abrirArchivo(item) {
-    if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
-    const extension = ext(item.archivo);
-    const absolute = item.archivo; // download_url ya es absoluta si vino de la API
-    if (extension === 'ppt' || extension === 'pptx') {
-      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
-    } else {
-      visor.src = absolute;
-    }
-    if (modal) modal.style.display = 'flex';
+function abrirArchivo(item) {
+  if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
+  const extension = ext(item.archivo);
+  // extraemos el filename (necesario para construir la URL de jsDelivr)
+  const filename = item.archivo.split('/').pop();
+  if (extension === 'ppt' || extension === 'pptx') {
+    // Office viewer sigue igual (requiere URL accesible públicamente)
+    visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(item.archivo)}`;
+  } else if (extension === 'pdf') {
+    // Usar jsDelivr CDN para evitar headers que fuerzan descarga
+    const cdnUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`;
+    visor.src = cdnUrl;
+  } else {
+    visor.src = item.archivo;
   }
+  if (modal) modal.style.display = 'flex';
+}
+
 
   function cerrarModal(){
     if (modal) modal.style.display = 'none';
@@ -378,6 +385,7 @@
 
 </body>
 </html>
+
 
 
 
