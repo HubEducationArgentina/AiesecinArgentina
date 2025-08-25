@@ -325,23 +325,94 @@
   render(items);
 
   // Modal open
-function abrirArchivo(item) {
+// Reemplaza la función abrirArchivo por esta versión robusta
+async function resolvePdfUrl(item) {
+  // filename sin ruta
+  const filename = (item.filename || item.archivo.split('/').pop());
+  // candidatos en orden preferido
+  const candidates = [
+    // 1) jsDelivr (CDN)
+    `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+    // 2) raw.githack (otra CDN útil)
+    `https://raw.githack.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+    // 3) raw.githubusercontent (directo GitHub raw) — puede forzar descarga en algunos casos
+    `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+    // 4) si item.archivo ya es una URL absoluta (download_url de la API), colócala última
+    item.archivo
+  ].filter(Boolean);
+
+  for (const url of candidates) {
+    try {
+      // Intentamos HEAD para comprobar existencia y tipo
+      const resp = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (!resp.ok) {
+        // si 404/403/otro, seguimos al siguiente
+        console.info('candidate HEAD failed', url, resp.status);
+        continue;
+      }
+      const ct = resp.headers.get('Content-Type') || '';
+      // si parece PDF, lo aceptamos
+      if (ct.toLowerCase().includes('pdf')) {
+        return url;
+      }
+      // algunos hosts devuelven Content-Type genérico; aún así podemos aceptar
+      // si la URL termina en .pdf devolvemos también
+      if (url.toLowerCase().endsWith('.pdf')) {
+        return url;
+      }
+      // si no es PDF según headers, seguimos buscando
+      console.info('candidate not PDF according to headers', url, ct);
+    } catch (err) {
+      // Puede ocurrir por CORS o bloqueo de HEAD; intentaremos hacer un GET "ligero"
+      console.warn('HEAD check failed (CORS o red) para', url, err);
+      try {
+        // Hacemos un GET pero sin leer el body (solo comprobar si responde)
+        const resp2 = await fetch(url, { method: 'GET', cache: 'no-store' });
+        if (resp2.ok) {
+          const ct2 = resp2.headers.get('Content-Type') || '';
+          if (ct2.toLowerCase().includes('pdf') || url.toLowerCase().endsWith('.pdf')) {
+            return url;
+          }
+        }
+      } catch (err2) {
+        // fallo también: saltamos al siguiente candidato
+        console.warn('GET check también falló para', url, err2);
+        continue;
+      }
+    }
+  }
+
+  // Si ningún candidato funcionó, devolvemos el archivo original como último recurso
+  return item.archivo;
+}
+
+async function abrirArchivo(item) {
   if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
   const extension = ext(item.archivo);
-  // extraemos el filename (necesario para construir la URL de jsDelivr)
-  const filename = item.archivo.split('/').pop();
+  const absolute = item.archivo; // download_url o raw
   if (extension === 'ppt' || extension === 'pptx') {
-    // Office viewer sigue igual (requiere URL accesible públicamente)
-    visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(item.archivo)}`;
-  } else if (extension === 'pdf') {
-    // Usar jsDelivr CDN para evitar headers que fuerzan descarga
-    const cdnUrl = `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`;
-    visor.src = cdnUrl;
-  } else {
-    visor.src = item.archivo;
+    visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+    if (modal) modal.style.display = 'flex';
+    return;
   }
+
+  if (extension === 'pdf') {
+    // resolvemos la mejor URL disponible
+    const url = await resolvePdfUrl(item);
+    // si la URL final es raw.githubusercontent (o similar que fuerza descarga), todavía puede forzar la descarga.
+    // Pero los CDNs habituales (jsDelivr/raw.githack) suelen servir inline. Asignamos al iframe:
+    visor.src = url;
+    if (modal) modal.style.display = 'flex';
+    return;
+  }
+
+  // fallback genérico
+  visor.src = absolute;
   if (modal) modal.style.display = 'flex';
 }
+
+
+
 
 
   function cerrarModal(){
@@ -385,6 +456,7 @@ function abrirArchivo(item) {
 
 </body>
 </html>
+
 
 
 
