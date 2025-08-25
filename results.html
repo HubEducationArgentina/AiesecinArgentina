@@ -1,0 +1,23 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resultados</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>¡Completado!</h1>
+    <p id="score"></p>
+    <button onclick="location.href='index.html'">Cerrar sesión</button>
+  </div>
+  <script>
+    const score = localStorage.getItem('score') || 0;
+    document.getElementById('score').innerText = `Puntaje final: ${score}`;
+    localStorage.removeItem('score');
+    localStorage.removeItem('user');
+  </script>
+</body>
+</html>

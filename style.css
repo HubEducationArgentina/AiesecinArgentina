@@ -1,0 +1,255 @@
+         body {
+            background-color: #0f0f0f;
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #1f1f1f;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        nav a {
+            color: #ddd;
+            margin-left: 20px;
+            text-decoration: none;
+        }
+
+        nav a:hover {
+            color: #1e90ff;
+        }
+
+        .welcome-container {
+            padding: 60px 40px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .welcome-container h1 {
+            font-size: 2em;
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .welcome-container p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            color: #ccc;
+        }
+
+        .buttons {
+            margin-top: 30px;
+        }
+
+        .buttons button {
+            margin-right: 15px;
+            padding: 12px 20px;
+            font-size: 1em;
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .buttons button:hover {
+            background-color: #005fa3;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9em;
+            background-color: #1f1f1f;
+            color: #888;
+        }
+
+
+
+/* --- Header layout (ajusta si ya tienes estilos) --- */
+header {
+  background-color: #1f1f1f;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Logo y nav ocupan sus espacios; progress se centra */
+.logo { font-size: 1.2rem; font-weight: 700; color:#fff; }
+nav { margin-left: auto; display:flex; gap: 18px; }
+nav a { color:#ddd; text-decoration:none; }
+nav a:hover { color:#1e90ff; }
+
+/* --- Progress module --- */
+.progress-module {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;            /* no crecer demasiado */
+  margin: 0 auto;            /* centrar en el header */
+  color: #fff;
+  min-width: 320px;
+}
+
+/* Nivel a la izquierda */
+.level {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #dbeafe;
+  letter-spacing: .6px;
+  white-space: nowrap;
+}
+
+/* Wrapper que contiene la barra y el texto pequeño */
+.progress-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* La "pista" gris */
+.progress-track {
+  width: 220px;
+  height: 14px;
+  background: linear-gradient(180deg, #2b2b2b, #232323); /* pista gris oscuro */
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.6);
+  position: relative;
+}
+
+/* El relleno que se anima */
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #9be78b 0%, #44c767 60%); /* verde degradado */
+  border-radius: 12px 0 0 12px;
+  transition: width 700ms cubic-bezier(.2,.9,.2,1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* Texto XP a la derecha de la barra */
+.progress-info {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+/* Accesible label oculto visualmente */
+.sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;
+}
+
+/* Contenedor buscador */
+.archivos-search {
+  display:flex; align-items:center; gap:.5rem;
+  margin: 1.5rem 2rem 0;
+  position: relative;
+  max-width: 520px;
+}
+.archivos-search input {
+  flex:1;
+  padding:.75rem 2.25rem .75rem .875rem;
+  border:1px solid #ddd;
+  border-radius: 10px;
+  font-size: 1rem;
+  outline: none;
+}
+.archivos-search input:focus {
+  border-color:#888; box-shadow: 0 0 0 3px rgba(0,0,0,.06);
+}
+.archivos-search button#limpiarBusqueda {
+  position:absolute; right:.5rem;
+  background:transparent; border:0; font-size:22px; line-height:1;
+  color:#666; cursor:pointer; padding:.25rem .25rem;
+  opacity:.7;
+}
+.archivos-search button#limpiarBusqueda:hover { opacity:1; }
+
+
+/* Estilos de la miniatura de cada curso */
+.archivo-card {
+  background: #f1f1f1;
+  border-radius: 12px;
+  padding: 0; /* quitamos padding global, lo manejamos por secciones */
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  overflow: hidden;
+}
+.archivo-card-thumb {
+  width: 100%;
+  aspect-ratio: 4/3;     /* proporción cómoda para thumbs */
+  background: #e9eef3;   /* fondo por si tarda */
+  display: block;
+  object-fit: cover;
+}
+.archivo-card-body {
+  padding: .75rem .85rem;
+}
+.archivo-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 .25rem 0;
+  color: #222;
+}
+.archivo-card small { display:block; font-weight:400; opacity:.7; margin-top:.25rem; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Móvil: reducir anchos */
+@media (max-width: 640px) {
+  .progress-module { min-width: 200px; gap: 8px; }
+  .progress-track { width: 140px; height: 12px; }
+  .progress-info { display: none; } /* hide XP label on very small screens */
+}
+
+
+
+
+
+.footer-fixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #222;   /* color de fondo */
+  color: #fff;        /* color del texto */
+  text-align: center;
+  padding: 10px;
+}

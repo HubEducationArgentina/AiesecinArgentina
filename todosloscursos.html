@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Bienvenido - Plataforma Educativa</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+    // Indica la ruta del worker de PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    </script>
+
+</head>
+<body>
+
+
+<!-- HEADER: logo - progress module - nav -->
+<header>
+  <div class="logo">VALKIRIANS | HUB EDUCACIONAL</div>
+
+
+  <nav>
+    <a href="index.html">Inicio</a>
+    <a href="certificados.html">Certificados</a>
+    <a href="todosloscursos.html">Todos los cursos</a>
+    <a href="Rankings.html">Rankings</a>
+  </nav>
+</header>
+
+
+<!-- BUSCADOR -->
+<div class="archivos-search">
+  <label for="buscadorArchivos" class="sr-only">Buscador</label>
+  <input id="buscadorArchivos" type="text" placeholder="Buscar cursos (ej: OGX, Líderes, Marketing)" />
+  <button id="limpiarBusqueda" type="button" aria-label="Limpiar búsqueda">&times;</button>
+</div>
+
+
+
+<!-- MODULO ARCHIVOS DE CURSOS (AUTO-DISCOVERY) -->
+<section id="archivosCursos" class="archivos-cursos"></section>
+
+<!-- Modal visor de archivo con título -->
+<div id="archivoModal" class="archivo-modal">
+  <div class="archivo-modal-content">
+    <div class="archivo-modal-header">
+      <h3 id="modalTitle" class="archivo-modal-title">Archivo</h3>
+      <button class="cerrar-modal" id="cerrarModal" aria-label="Cerrar">&times;</button>
+    </div>
+    <iframe id="visorArchivo" src="" frameborder="0"></iframe>
+  </div>
+</div>
+
+<style>
+.archivos-cursos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 2rem;
+}
+.archivo-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #222;   /* <--- cambia este valor */
+}
+.archivo-card-title {
+  font-size: 1rem;       /* tamaño mediano-grande */
+  font-weight: 600;      /* negrita */
+  margin-bottom: 0.25rem;
+  color: #222;           /* cámbialo según paleta */
+}
+.archivo-card {
+  background: #f1f1f1;
+  border-radius: 12px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+}
+.archivo-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.archivo-card small { display:block; font-weight:400; opacity:.7; margin-top:.25rem; }
+
+.archivo-modal {
+  display: none;
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  justify-content: center;
+  align-items: center;
+}
+.archivo-modal-content {
+  position: relative;
+  width: min(1100px, 90vw);
+  height: min(85vh, 900px);
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.archivo-modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:.75rem 1rem; border-bottom:1px solid #eee; background:#fafafa;
+}
+.archivo-modal-title { margin:0; font-size:1rem; font-weight:600; }
+#visorArchivo { flex:1; width:100%; height:100%; }
+.cerrar-modal {
+  background: transparent; border: 0; font-size: 28px; line-height: 1;
+  color: #444; cursor: pointer; padding:.25rem .5rem;
+}
+.archivos-empty {
+  margin: 2rem; opacity: .7; font-style: italic;
+}
+</style>
+
+
+
+
+
+
+<!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
+<script>
+(async function initArchivosCursos(){
+  const contenedor = document.getElementById("archivosCursos");
+  const modal = document.getElementById("archivoModal");
+  const visor = document.getElementById("visorArchivo");
+  const cerrar = document.getElementById("cerrarModal");
+  const modalTitle = document.getElementById("modalTitle");
+
+  // Buscador (si ya lo tienes en el DOM; si no, ignora estas 3 líneas)
+  const inputBusqueda = document.getElementById("buscadorArchivos");
+  const btnLimpiar = document.getElementById("limpiarBusqueda");
+
+  // Utils
+  const prettyName = (s) => {
+    const base = decodeURIComponent(String(s||'')).split('/').pop()
+      .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
+    return base.charAt(0).toUpperCase() + base.slice(1);
+  };
+  const ext = (p) => (p.split('.').pop() || '').toLowerCase();
+  const norm = (txt) => String(txt||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+
+  // Caches in-memory para no recalcular
+  const thumbCache = new Map();
+
+  // Manifest o listado
+  async function tryJsonManifest(){
+    try {
+      const r = await fetch('archivos_cursos/index.json', { cache: 'no-store' });
+      if (!r.ok) return null;
+      const arr = await r.json();
+      if (!Array.isArray(arr)) return null;
+      return arr
+        .filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
+        .map(f => ({ nombre: prettyName(f), archivo: `archivos_cursos/${f}` }));
+    } catch { return null; }
+  }
+  async function tryDirectoryListing(){
+    try {
+      const r = await fetch('archivos_cursos/', { cache: 'no-store' });
+      if (!r.ok) return null;
+      const html = await r.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const links = Array.from(doc.querySelectorAll('a'))
+        .map(a => a.getAttribute('href') || '')
+        .filter(h => /\.(pdf|ppt|pptx)$/i.test(h));
+      const files = links.map(h => h.replace(/^\//,''));
+      return files.map(file => {
+        const fname = file.split('/').pop();
+        return { nombre: prettyName(fname), archivo: `archivos_cursos/${fname}` };
+      });
+    } catch { return null; }
+  }
+  const dedupeByArchivo = (arr) => {
+    const seen = new Set();
+    return arr.filter(it => (seen.has(it.archivo) ? false : (seen.add(it.archivo), true)));
+  };
+
+  let archivos = await tryJsonManifest();
+  if (!archivos || archivos.length === 0) archivos = await tryDirectoryListing();
+  archivos = Array.isArray(archivos) ? dedupeByArchivo(archivos) : [];
+
+  // Precalcula campos de búsqueda
+  const items = archivos.map(it => {
+    const filename = it.archivo.split('/').pop();
+    return {
+      ...it,
+      filename,
+      _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
+    };
+  });
+
+  // ---------- MINIATURAS ----------
+  const GENERIC_ICONS = {
+    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`),
+    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`)
+  };
+
+  async function loadImageIfExists(url){
+    try {
+      const r = await fetch(url, { method:'HEAD', cache: 'no-store' });
+      if (r.ok) return url;
+    } catch {}
+    return null;
+  }
+
+  async function renderPdfThumb(url, maxW = 480){
+    if (thumbCache.has(url)) return thumbCache.get(url);
+    try {
+      const loadingTask = pdfjsLib.getDocument({ url, withCredentials:false });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(maxW / viewport.width, 1.5); // limita escala
+      const v2 = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: false });
+      canvas.width = v2.width;
+      canvas.height = v2.height;
+      await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+      const dataURL = canvas.toDataURL('image/webp', 0.9);
+      thumbCache.set(url, dataURL);
+      return dataURL;
+    } catch(e){
+      console.warn('PDF thumb error', e);
+      return GENERIC_ICONS.pdf;
+    }
+  }
+
+  async function getThumb(item){
+    const e = ext(item.archivo);
+    if (e === 'pdf') {
+      return await renderPdfThumb(item.archivo);
+    }
+    if (e === 'ppt' || e === 'pptx') {
+      // Busca imagen con mismo nombre (png/jpg/webp)
+      const base = item.archivo.replace(/\.(pptx?|PDF)$/i,'');
+      const candidateExts = ['.webp','.png','.jpg','.jpeg'];
+      for (const c of candidateExts) {
+        const found = await loadImageIfExists(base + c);
+        if (found) return found;
+      }
+      return GENERIC_ICONS.ppt;
+    }
+    return GENERIC_ICONS.pdf;
+  }
+
+  // Lazy render de thumbs con IntersectionObserver
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(async (entry) => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      io.unobserve(img);
+      const item = img._itemRef;
+      img.src = await getThumb(item);
+    });
+  }, { rootMargin: '200px 0px' });
+
+  // ---------- RENDER ----------
+  function render(list){
+    contenedor.innerHTML = '';
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'archivos-empty';
+      const q = (document.getElementById("buscadorArchivos")||{value:''}).value.trim();
+      empty.textContent = q ? `Sin resultados para “${q}”.` : 'No se encontraron cursos activos.';
+      contenedor.appendChild(empty);
+      return;
+    }
+    list.forEach(item => {
+      const card = document.createElement("div");
+      card.className = "archivo-card";
+
+      const img = document.createElement('img');
+      img.className = 'archivo-card-thumb';
+      img.alt = `Vista previa de ${item.filename}`;
+      img.loading = 'lazy';
+      img._itemRef = item;      // guardamos referencia
+      io.observe(img);          // se carga cuando aparece en viewport
+
+      const body = document.createElement('div');
+      body.className = 'archivo-card-body';
+      body.innerHTML = `
+        <div class="archivo-card-title">${item.nombre}</div>
+        <small>${item.filename}</small>
+      `;
+
+      card.appendChild(img);
+      card.appendChild(body);
+      card.addEventListener("click", () => abrirArchivo(item));
+      contenedor.appendChild(card);
+    });
+  }
+
+  // Filtro (si tienes buscador)
+  function filtrar(q){
+    const tokens = norm(q||'').split(/\s+/).filter(Boolean);
+    if (!tokens.length) return items;
+    return items.filter(it => tokens.every(t => it._search.includes(t)));
+  }
+
+  // Inicial
+  render(items);
+
+  // Eventos búsqueda (si existen)
+  if (inputBusqueda) {
+    let t;
+    inputBusqueda.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => render(filtrar(inputBusqueda.value)), 120);
+    });
+  }
+  if (btnLimpiar) {
+    btnLimpiar.addEventListener('click', () => {
+      inputBusqueda.value = '';
+      render(items);
+      inputBusqueda.focus();
+    });
+  }
+
+  // Modal
+  function abrirArchivo(item) {
+    modalTitle.textContent = item.nombre || prettyName(item.archivo);
+    const extension = ext(item.archivo);
+    if (extension === 'ppt' || extension === 'pptx') {
+      const absolute = new URL(item.archivo, location.href).href;
+      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+    } else {
+      visor.src = item.archivo;
+    }
+    modal.style.display = "flex";
+  }
+  function cerrarModal(){
+    modal.style.display = "none";
+    visor.src = "";
+  }
+  cerrar.addEventListener('click', cerrarModal);
+  window.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
+})();
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<footer class="footer-fixed">
+    Hub Educacional — Argentina 2025
+</footer>
+
+
+
+
+
+
+</body>
+</html>
