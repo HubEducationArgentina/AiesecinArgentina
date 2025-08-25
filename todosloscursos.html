@@ -136,7 +136,7 @@
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
 
-  // Buscador (si ya lo tienes en el DOM; si no, ignora estas 3 líneas)
+  // Buscador (opcional)
   const inputBusqueda = document.getElementById("buscadorArchivos");
   const btnLimpiar = document.getElementById("limpiarBusqueda");
 
@@ -146,13 +146,15 @@
       .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
     return base.charAt(0).toUpperCase() + base.slice(1);
   };
-  const ext = (p) => (p.split('.').pop() || '').toLowerCase();
+  const ext = (p) => (String(p).split('.').pop() || '').toLowerCase();
   const norm = (txt) => String(txt||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
 
   // Caches in-memory para no recalcular
   const thumbCache = new Map();
 
-  // Manifest o listado
+  // ---------------------------
+  // 1) intentos de listado
+  // ---------------------------
   async function tryJsonManifest(){
     try {
       const r = await fetch('archivos_cursos/index.json', { cache: 'no-store' });
@@ -162,8 +164,11 @@
       return arr
         .filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
         .map(f => ({ nombre: prettyName(f), archivo: `archivos_cursos/${f}` }));
-    } catch { return null; }
+    } catch (e) {
+      return null;
+    }
   }
+
   async function tryDirectoryListing(){
     try {
       const r = await fetch('archivos_cursos/', { cache: 'no-store' });
@@ -178,15 +183,51 @@
         const fname = file.split('/').pop();
         return { nombre: prettyName(fname), archivo: `archivos_cursos/${fname}` };
       });
-    } catch { return null; }
+    } catch (e) {
+      return null;
+    }
   }
+
+  // ---------------------------
+  // 2) Fallback: GitHub API (solo si tu repo es público)
+  // ---------------------------
+  // Rellena OWNER y REPO si quieres usar esta opción.
+  // Ej: const OWNER = 'miUsuario'; const REPO = 'miRepo';
+  // Si no quieres usar la API, deja OWNER='' y la función retornará null.
+  const OWNER = ''; // <-- pon tu usuario/organización de GitHub aquí
+  const REPO  = ''; // <-- pon tu repo aquí
+  const GITHUB_PATH = 'archivos_cursos'; // ruta dentro del repo
+
+  async function tryGitHubListing(){
+    if (!OWNER || !REPO) return null;
+    try {
+      const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${GITHUB_PATH}`;
+      const r = await fetch(api, { cache: 'no-store' });
+      if (!r.ok) return null;
+      const arr = await r.json();
+      // arr es lista de objetos con { name, download_url, ... }
+      const files = arr
+        .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
+        .map(f => {
+          // usamos download_url (raw.githubusercontent) para evitar problemas de ruta
+          return { nombre: prettyName(f.name), archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/main/${GITHUB_PATH}/${f.name}` };
+        });
+      return files;
+    } catch (e) {
+      console.warn('GitHub listing failed', e);
+      return null;
+    }
+  }
+
   const dedupeByArchivo = (arr) => {
     const seen = new Set();
     return arr.filter(it => (seen.has(it.archivo) ? false : (seen.add(it.archivo), true)));
   };
 
+  // Ejecuta los intentos en orden
   let archivos = await tryJsonManifest();
   if (!archivos || archivos.length === 0) archivos = await tryDirectoryListing();
+  if (!archivos || archivos.length === 0) archivos = await tryGitHubListing();
   archivos = Array.isArray(archivos) ? dedupeByArchivo(archivos) : [];
 
   // Precalcula campos de búsqueda
@@ -207,6 +248,7 @@
 
   async function loadImageIfExists(url){
     try {
+      // HEAD a la URL. En raw.githubusercontent suele responder OK.
       const r = await fetch(url, { method:'HEAD', cache: 'no-store' });
       if (r.ok) return url;
     } catch {}
@@ -216,11 +258,12 @@
   async function renderPdfThumb(url, maxW = 480){
     if (thumbCache.has(url)) return thumbCache.get(url);
     try {
+      // pdfjsLib debe estar disponible (agrega script en head)
       const loadingTask = pdfjsLib.getDocument({ url, withCredentials:false });
       const pdf = await loadingTask.promise;
       const page = await pdf.getPage(1);
       const viewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(maxW / viewport.width, 1.5); // limita escala
+      const scale = Math.min(maxW / viewport.width, 1.5);
       const v2 = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: false });
@@ -332,6 +375,7 @@
     modalTitle.textContent = item.nombre || prettyName(item.archivo);
     const extension = ext(item.archivo);
     if (extension === 'ppt' || extension === 'pptx') {
+      // Si la URL viene de raw.githubusercontent (download_url) funciona bien
       const absolute = new URL(item.archivo, location.href).href;
       visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     } else {
@@ -365,7 +409,6 @@
 
 
 
-
 <footer class="footer-fixed">
     Hub Educacional — Argentina 2025
 </footer>
@@ -377,3 +420,4 @@
 
 </body>
 </html>
+
