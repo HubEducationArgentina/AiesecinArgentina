@@ -136,23 +136,26 @@
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
 
-  // Buscador (si ya lo tienes en el DOM; si no, ignora estas 3 líneas)
+  // Buscador
   const inputBusqueda = document.getElementById("buscadorArchivos");
   const btnLimpiar = document.getElementById("limpiarBusqueda");
 
-  // Utils
+  // Utilidades
   const prettyName = (s) => {
     const base = decodeURIComponent(String(s||'')).split('/').pop()
       .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
     return base.charAt(0).toUpperCase() + base.slice(1);
   };
   const ext = (p) => (p.split('.').pop() || '').toLowerCase();
-  const norm = (txt) => String(txt||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
 
-  // Caches in-memory para no recalcular
-  const thumbCache = new Map();
+  // Normaliza texto para búsqueda: sin acentos, minúsculas
+  const norm = (txt) => String(txt||'')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu,'')
+    .toLowerCase()
+    .trim();
 
-  // Manifest o listado
+  // 1) Intenta leer manifest JSON si existe: archivos_cursos/index.json
   async function tryJsonManifest(){
     try {
       const r = await fetch('archivos_cursos/index.json', { cache: 'no-store' });
@@ -164,6 +167,8 @@
         .map(f => ({ nombre: prettyName(f), archivo: `archivos_cursos/${f}` }));
     } catch { return null; }
   }
+
+  // 2) Si tu hosting lista directorios, intenta parsear enlaces de archivos
   async function tryDirectoryListing(){
     try {
       const r = await fetch('archivos_cursos/', { cache: 'no-store' });
@@ -180,6 +185,7 @@
       });
     } catch { return null; }
   }
+
   const dedupeByArchivo = (arr) => {
     const seen = new Set();
     return arr.filter(it => (seen.has(it.archivo) ? false : (seen.add(it.archivo), true)));
@@ -199,79 +205,13 @@
     };
   });
 
-  // ---------- MINIATURAS ----------
-  const GENERIC_ICONS = {
-    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`),
-    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`)
-  };
-
-  async function loadImageIfExists(url){
-    try {
-      const r = await fetch(url, { method:'HEAD', cache: 'no-store' });
-      if (r.ok) return url;
-    } catch {}
-    return null;
-  }
-
-  async function renderPdfThumb(url, maxW = 480){
-    if (thumbCache.has(url)) return thumbCache.get(url);
-    try {
-      const loadingTask = pdfjsLib.getDocument({ url, withCredentials:false });
-      const pdf = await loadingTask.promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(maxW / viewport.width, 1.5); // limita escala
-      const v2 = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: false });
-      canvas.width = v2.width;
-      canvas.height = v2.height;
-      await page.render({ canvasContext: ctx, viewport: v2 }).promise;
-      const dataURL = canvas.toDataURL('image/webp', 0.9);
-      thumbCache.set(url, dataURL);
-      return dataURL;
-    } catch(e){
-      console.warn('PDF thumb error', e);
-      return GENERIC_ICONS.pdf;
-    }
-  }
-
-  async function getThumb(item){
-    const e = ext(item.archivo);
-    if (e === 'pdf') {
-      return await renderPdfThumb(item.archivo);
-    }
-    if (e === 'ppt' || e === 'pptx') {
-      // Busca imagen con mismo nombre (png/jpg/webp)
-      const base = item.archivo.replace(/\.(pptx?|PDF)$/i,'');
-      const candidateExts = ['.webp','.png','.jpg','.jpeg'];
-      for (const c of candidateExts) {
-        const found = await loadImageIfExists(base + c);
-        if (found) return found;
-      }
-      return GENERIC_ICONS.ppt;
-    }
-    return GENERIC_ICONS.pdf;
-  }
-
-  // Lazy render de thumbs con IntersectionObserver
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(async (entry) => {
-      if (!entry.isIntersecting) return;
-      const img = entry.target;
-      io.unobserve(img);
-      const item = img._itemRef;
-      img.src = await getThumb(item);
-    });
-  }, { rootMargin: '200px 0px' });
-
-  // ---------- RENDER ----------
+  // Render helper
   function render(list){
     contenedor.innerHTML = '';
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'archivos-empty';
-      const q = (document.getElementById("buscadorArchivos")||{value:''}).value.trim();
+      const q = inputBusqueda.value.trim();
       empty.textContent = q ? `Sin resultados para “${q}”.` : 'No se encontraron cursos activos.';
       contenedor.appendChild(empty);
       return;
@@ -279,53 +219,39 @@
     list.forEach(item => {
       const card = document.createElement("div");
       card.className = "archivo-card";
-
-      const img = document.createElement('img');
-      img.className = 'archivo-card-thumb';
-      img.alt = `Vista previa de ${item.filename}`;
-      img.loading = 'lazy';
-      img._itemRef = item;      // guardamos referencia
-      io.observe(img);          // se carga cuando aparece en viewport
-
-      const body = document.createElement('div');
-      body.className = 'archivo-card-body';
-      body.innerHTML = `
+      card.innerHTML = `
         <div class="archivo-card-title">${item.nombre}</div>
         <small>${item.filename}</small>
       `;
-
-      card.appendChild(img);
-      card.appendChild(body);
       card.addEventListener("click", () => abrirArchivo(item));
       contenedor.appendChild(card);
     });
   }
 
-  // Filtro (si tienes buscador)
+  // Filtro por palabras (AND)
   function filtrar(q){
-    const tokens = norm(q||'').split(/\s+/).filter(Boolean);
+    const tokens = norm(q).split(/\s+/).filter(Boolean);
     if (!tokens.length) return items;
     return items.filter(it => tokens.every(t => it._search.includes(t)));
   }
 
-  // Inicial
+  // Debounce
+  let t;
+  function onInput(){
+    clearTimeout(t);
+    t = setTimeout(() => render(filtrar(inputBusqueda.value)), 120);
+  }
+
+  // Inicializa render
   render(items);
 
-  // Eventos búsqueda (si existen)
-  if (inputBusqueda) {
-    let t;
-    inputBusqueda.addEventListener('input', () => {
-      clearTimeout(t);
-      t = setTimeout(() => render(filtrar(inputBusqueda.value)), 120);
-    });
-  }
-  if (btnLimpiar) {
-    btnLimpiar.addEventListener('click', () => {
-      inputBusqueda.value = '';
-      render(items);
-      inputBusqueda.focus();
-    });
-  }
+  // Eventos búsqueda
+  inputBusqueda.addEventListener('input', onInput);
+  btnLimpiar.addEventListener('click', () => {
+    inputBusqueda.value = '';
+    render(items);
+    inputBusqueda.focus();
+  });
 
   // Modal
   function abrirArchivo(item) {
@@ -339,16 +265,17 @@
     }
     modal.style.display = "flex";
   }
+
   function cerrarModal(){
     modal.style.display = "none";
     visor.src = "";
   }
+
   cerrar.addEventListener('click', cerrarModal);
   window.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
 })();
 </script>
-
 
 
 
@@ -377,3 +304,4 @@
 
 </body>
 </html>
+
