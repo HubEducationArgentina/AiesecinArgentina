@@ -130,341 +130,303 @@
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
 (async function initArchivosCursos(){
-  // IDs que debe tener tu HTML (ajusta si tus IDs son distintos)
-  const contenedor = document.getElementById("archivosCursos");
-  const modal = document.getElementById("archivoModal");
-  const visor = document.getElementById("visorArchivo");
-  const cerrar = document.getElementById("cerrarModal");
-  const modalTitle = document.getElementById("modalTitle");
+  try {
+    // IDs que debe tener tu HTML (ajusta si tus IDs son distintos)
+    const contenedor = document.getElementById("archivosCursos");
+    const modal = document.getElementById("archivoModal");
+    const visor = document.getElementById("visorArchivo");
+    const cerrar = document.getElementById("cerrarModal");
+    const modalTitle = document.getElementById("modalTitle");
 
-  if (!contenedor) {
-    console.error('No se encontró el contenedor: id="archivosCursos". Revisa tu HTML.');
-    return;
-  }
-
-  // Config GitHub
-  const OWNER = "HubEducationArgentina";     // tu usuario/org
-  const REPO  = "AiesecinArgentina";         // tu repo
-  const PATH  = "archivos_cursos";           // carpeta dentro del repo
-  const BRANCH = "main";                     // cambia si tu rama es "master"
-
-  // Utils
-  const prettyName = (s) => {
-    const base = decodeURIComponent(String(s||'')).split('/').pop()
-      .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
-    return base.charAt(0).toUpperCase() + base.slice(1);
-  };
-  const ext = (p) => (String(p||'').split('.').pop() || '').toLowerCase();
-  const norm = (txt) => String(txt||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
-  const thumbCache = new Map();
-
-  // 1) try index.json
-  async function tryJsonManifest(){
-    try {
-      const url = `${PATH}/index.json`;
-      const r = await fetch(url, { cache: 'no-store' });
-      if (!r.ok) {
-        console.info('index.json no encontrado (status ' + r.status + ')');
-        return null;
-      }
-      const arr = await r.json();
-      if (!Array.isArray(arr)) return null;
-      return arr.filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
-                .map(f => ({ nombre: prettyName(f), archivo: `${PATH}/${f}` }));
-    } catch(e){
-      console.warn('tryJsonManifest error', e);
-      return null;
-    }
-  }
-
-  // 2) GitHub API fallback
-  async function tryGitHubListing(){
-    try {
-      const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
-      const r = await fetch(api, { cache: 'no-store' });
-      if (!r.ok) {
-        console.warn('GitHub API returned', r.status, r.statusText);
-        return null;
-      }
-      const arr = await r.json();
-      // Log para depuración: ves aquí lo que devuelve GitHub
-      console.info('GitHub API files:', arr.map(a => a.name));
-      return arr
-        .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
-        .map(f => ({
-          nombre: prettyName(f.name),
-          // usa download_url cuando exista (raw.githubusercontent), si no lo creamos manualmente
-          archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
-        }));
-    } catch(e){
-      console.warn('tryGitHubListing error', e);
-      return null;
-    }
-  }
-
-  // Ejecuta intentos
-  let archivos = await tryJsonManifest();
-  if (!archivos || archivos.length === 0) archivos = await tryGitHubListing();
-  archivos = Array.isArray(archivos) ? archivos : [];
-
-  if (!archivos.length) {
-    contenedor.innerHTML = '<div class="archivos-empty">No se encontraron cursos activos.</div>';
-    console.info('No hay archivos listados en index.json ni en la API de GitHub.');
-    return;
-  }
-
-  // Prepara items de búsqueda
-  const items = archivos.map(it => {
-    const filename = it.archivo.split('/').pop();
-    return { ...it, filename, _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename)) };
-  });
-
-  // Generación de thumbs (PDF via pdfjs si está disponible, PPT busca imagen)
-  const GENERIC_ICONS = {
-    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`),
-    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`)
-  };
-
-  async function loadImageIfExists(url){
-    try {
-      // encodeURI para proteger espacios/caracteres
-      const safe = encodeURI(url);
-      const r = await fetch(safe, { method: 'HEAD', cache: 'no-store' });
-      if (r.ok) return safe;
-    } catch(e){}
-    return null;
-  }
-
-  async function renderPdfThumb(url, maxW = 480){
-    if (thumbCache.has(url)) return thumbCache.get(url);
-    if (typeof pdfjsLib === 'undefined') {
-      console.warn('pdfjsLib no disponible — añade PDF.js en <head> si quieres miniaturas PDF.');
-      return GENERIC_ICONS.pdf;
-    }
-    try {
-      const loadingTask = pdfjsLib.getDocument({ url, withCredentials:false });
-      const pdf = await loadingTask.promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(maxW / viewport.width, 1.5);
-      const v2 = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = v2.width; canvas.height = v2.height;
-      await page.render({ canvasContext: ctx, viewport: v2 }).promise;
-      const dataURL = canvas.toDataURL('image/webp', 0.9);
-      thumbCache.set(url, dataURL);
-      return dataURL;
-    } catch(e){
-      console.warn('renderPdfThumb error', e);
-      return GENERIC_ICONS.pdf;
-    }
-  }
-
-  async function getThumb(item){
-    const e = ext(item.archivo);
-    if (e === 'pdf') return await renderPdfThumb(item.archivo);
-    if (e === 'ppt' || e === 'pptx') {
-      const base = item.archivo.replace(/\.[^/.]+$/i,'');
-      const candidateExts = ['.webp','.png','.jpg','.jpeg'];
-      for (const c of candidateExts) {
-        const found = await loadImageIfExists(base + c);
-        if (found) return found;
-      }
-      return GENERIC_ICONS.ppt;
-    }
-    return GENERIC_ICONS.pdf;
-  }
-
-  // IntersectionObserver para lazy-load
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(async entry => {
-      if (!entry.isIntersecting) return;
-      const img = entry.target;
-      io.unobserve(img);
-      const item = img._itemRef;
-      img.src = await getThumb(item);
-    });
-  }, { rootMargin: '200px 0px' });
-
-  // Render
-  function render(list){
-    contenedor.innerHTML = '';
-    if (!list.length) {
-      const empty = document.createElement('div');
-      empty.className = 'archivos-empty';
-      empty.textContent = 'No se encontraron cursos activos.';
-      contenedor.appendChild(empty);
+    if (!contenedor) {
+      console.error('No se encontró el contenedor: id="archivosCursos". Revisa tu HTML.');
       return;
     }
-    list.forEach(item => {
-      const card = document.createElement('div');
-      card.className = 'archivo-card';
 
-      const img = document.createElement('img');
-      img.className = 'archivo-card-thumb';
-      img.alt = `Vista previa de ${item.filename}`;
-      img.loading = 'lazy';
-      img._itemRef = item;
-      io.observe(img);
+    // Config GitHub (ajusta según tu repo)
+    const OWNER = "HubEducationArgentina";
+    const REPO  = "AiesecinArgentina";
+    const PATH  = "archivos_cursos";
+    const BRANCH = "main";
 
-      const body = document.createElement('div');
-      body.className = 'archivo-card-body';
-      body.innerHTML = `<div class="archivo-card-title">${item.nombre}</div><small>${item.filename}</small>`;
+    // Utilidades
+    const prettyName = (s) => {
+      const base = decodeURIComponent(String(s||'')).split('/').pop()
+        .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
+      return base.charAt(0).toUpperCase() + base.slice(1);
+    };
+    const ext = (p) => (String(p||'').split('.').pop() || '').toLowerCase();
+    const norm = (txt) => String(txt||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+    const thumbCache = new Map();
+    let lastPdfBlobUrl = null;
 
-      card.appendChild(img);
-      card.appendChild(body);
-      card.addEventListener('click', () => abrirArchivo(item));
-      // chequeo por si contenedor dejara de existir (muy raro)
-      if (contenedor) contenedor.appendChild(card);
-      else console.error('contenedor desapareció antes de appendChild');
-    });
-  }
+    function showStatus(msg, isError = false) {
+      // Mensaje visible en el contenedor para depuración
+      contenedor.innerHTML = `<div class="archivos-status ${isError ? 'error' : 'info'}">${msg}</div>`;
+      console.info('status:', msg);
+    }
 
-  // Inicial
-  render(items);
-
-  // Modal open
-// Reemplaza la función abrirArchivo por esta versión robusta
-async function resolvePdfUrl(item) {
-  // filename sin ruta
-  const filename = (item.filename || item.archivo.split('/').pop());
-  // candidatos en orden preferido
-  const candidates = [
-    // 1) jsDelivr (CDN)
-    `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-    // 2) raw.githack (otra CDN útil)
-    `https://raw.githack.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-    // 3) raw.githubusercontent (directo GitHub raw) — puede forzar descarga en algunos casos
-    `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-    // 4) si item.archivo ya es una URL absoluta (download_url de la API), colócala última
-    item.archivo
-  ].filter(Boolean);
-
-  for (const url of candidates) {
-    try {
-      // Intentamos HEAD para comprobar existencia y tipo
-      const resp = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-      if (!resp.ok) {
-        // si 404/403/otro, seguimos al siguiente
-        console.info('candidate HEAD failed', url, resp.status);
-        continue;
-      }
-      const ct = resp.headers.get('Content-Type') || '';
-      // si parece PDF, lo aceptamos
-      if (ct.toLowerCase().includes('pdf')) {
-        return url;
-      }
-      // algunos hosts devuelven Content-Type genérico; aún así podemos aceptar
-      // si la URL termina en .pdf devolvemos también
-      if (url.toLowerCase().endsWith('.pdf')) {
-        return url;
-      }
-      // si no es PDF según headers, seguimos buscando
-      console.info('candidate not PDF according to headers', url, ct);
-    } catch (err) {
-      // Puede ocurrir por CORS o bloqueo de HEAD; intentaremos hacer un GET "ligero"
-      console.warn('HEAD check failed (CORS o red) para', url, err);
+    // 1) try index.json
+    async function tryJsonManifest(){
       try {
-        // Hacemos un GET pero sin leer el body (solo comprobar si responde)
-        const resp2 = await fetch(url, { method: 'GET', cache: 'no-store' });
-        if (resp2.ok) {
-          const ct2 = resp2.headers.get('Content-Type') || '';
-          if (ct2.toLowerCase().includes('pdf') || url.toLowerCase().endsWith('.pdf')) {
-            return url;
-          }
+        const url = `${PATH}/index.json`;
+        console.info('Intentando leer manifest en', url);
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) {
+          console.info('index.json no encontrado (status ' + r.status + ')');
+          return null;
         }
-      } catch (err2) {
-        // fallo también: saltamos al siguiente candidato
-        console.warn('GET check también falló para', url, err2);
-        continue;
+        const arr = await r.json();
+        if (!Array.isArray(arr)) return null;
+        return arr.filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
+                  .map(f => ({ nombre: prettyName(f), archivo: `${PATH}/${f}` }));
+      } catch(e){
+        console.warn('tryJsonManifest error', e);
+        return null;
       }
     }
-  }
 
-  // Si ningún candidato funcionó, devolvemos el archivo original como último recurso
-  return item.archivo;
-}
+    // 2) GitHub API fallback
+    async function tryGitHubListing(){
+      try {
+        const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
+        console.info('Consultando GitHub API:', api);
+        const r = await fetch(api, { cache: 'no-store' });
+        if (!r.ok) {
+          console.warn('GitHub API returned', r.status, r.statusText);
+          return null;
+        }
+        const arr = await r.json();
+        console.info('GitHub API files:', arr.map(a => a.name));
+        return arr
+          .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
+          .map(f => ({
+            nombre: prettyName(f.name),
+            archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
+          }));
+      } catch(e){
+        console.warn('tryGitHubListing error', e);
+        return null;
+      }
+    }
 
-// añadir cerca del inicio del IIFE (por ejemplo tras thumbCache)
-let lastPdfBlobUrl = null;
+    // Ejecuta intentos
+    showStatus('Cargando lista de archivos...');
+    let archivos = await tryJsonManifest();
+    if (!archivos || archivos.length === 0) archivos = await tryGitHubListing();
+    archivos = Array.isArray(archivos) ? archivos : [];
 
-// reemplaza abrirArchivo por esto
-async function abrirArchivo(item) {
-  if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
-  const extension = ext(item.archivo);
-  const absolute = item.archivo;
-
-  // revocar blob previo si existe (libera memoria)
-  if (lastPdfBlobUrl) {
-    try { URL.revokeObjectURL(lastPdfBlobUrl); } catch(e) {}
-    lastPdfBlobUrl = null;
-  }
-
-  if (extension === 'ppt' || extension === 'pptx') {
-    visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
-    if (modal) modal.style.display = 'flex';
-    return;
-  }
-
-  if (extension === 'pdf') {
-    try {
-      // intentamos obtener el PDF como ArrayBuffer
-      const resp = await fetch(absolute, { cache: 'no-store', credentials: 'omit' });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const ab = await resp.arrayBuffer(); // si CORS lo permite, aquí tenemos bytes
-      const blob = new Blob([ab], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-      lastPdfBlobUrl = blobUrl;
-      visor.src = blobUrl;
-      if (modal) modal.style.display = 'flex';
+    if (!archivos.length) {
+      contenedor.innerHTML = '<div class="archivos-empty">No se encontraron cursos activos.</div>';
+      console.info('No hay archivos listados en index.json ni en la API de GitHub.');
       return;
-    } catch (err) {
-      console.warn('fetch PDF falló (CORS/otro). Haciendo fallback a CDNs/abrir en nueva pestaña', err);
-      // fallback: probar jsDelivr / raw.githack / raw.githubusercontent en orden
-      const filename = (item.filename || item.archivo.split('/').pop());
-      const candidates = [
-        `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-        `https://raw.githack.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-        `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
-        item.archivo
-      ];
-      for (const url of candidates) {
-        try {
-          const h = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-          if (h.ok) {
-            // si HEAD responde ok, intentamos usar esa URL en el iframe
-            visor.src = url;
+    }
+
+    // Prepara items de búsqueda
+    const items = archivos.map(it => {
+      const filename = it.archivo.split('/').pop();
+      return { ...it, filename, _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename)) };
+    });
+
+    // Thumbs: iconos genéricos
+    const GENERIC_ICONS = {
+      pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`),
+      ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`)
+    };
+
+    async function loadImageIfExists(url){
+      try {
+        const safe = encodeURI(url);
+        const r = await fetch(safe, { method: 'HEAD', cache: 'no-store' });
+        if (r.ok) return safe;
+      } catch(e){}
+      return null;
+    }
+
+    async function renderPdfThumb(url, maxW = 480){
+      if (thumbCache.has(url)) return thumbCache.get(url);
+      if (typeof pdfjsLib === 'undefined') {
+        console.warn('pdfjsLib no disponible — añade PDF.js en <head> si quieres miniaturas PDF.');
+        return GENERIC_ICONS.pdf;
+      }
+      try {
+        const loadingTask = pdfjsLib.getDocument({ url, withCredentials:false });
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(maxW / viewport.width, 1.5);
+        const v2 = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = v2.width; canvas.height = v2.height;
+        await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+        const dataURL = canvas.toDataURL('image/webp', 0.9);
+        thumbCache.set(url, dataURL);
+        return dataURL;
+      } catch(e){
+        console.warn('renderPdfThumb error', e);
+        return GENERIC_ICONS.pdf;
+      }
+    }
+
+    async function getThumb(item){
+      const e = ext(item.archivo);
+      if (e === 'pdf') return await renderPdfThumb(item.archivo);
+      if (e === 'ppt' || e === 'pptx') {
+        const base = item.archivo.replace(/\.[^/.]+$/i,'');
+        const candidateExts = ['.webp','.png','.jpg','.jpeg'];
+        for (const c of candidateExts) {
+          const found = await loadImageIfExists(base + c);
+          if (found) return found;
+        }
+        return GENERIC_ICONS.ppt;
+      }
+      return GENERIC_ICONS.pdf;
+    }
+
+    // IntersectionObserver para lazy-load (fallback si no disponible)
+    let io = null;
+    if ('IntersectionObserver' in window) {
+      io = new IntersectionObserver(entries => {
+        entries.forEach(async entry => {
+          if (!entry.isIntersecting) return;
+          const img = entry.target;
+          io.unobserve(img);
+          const item = img._itemRef;
+          try {
+            img.src = await getThumb(item);
+          } catch(e){
+            console.warn('Error generando thumb para', item, e);
+            img.src = GENERIC_ICONS.pdf;
+          }
+        });
+      }, { rootMargin: '200px 0px' });
+    } else {
+      console.warn('IntersectionObserver no soportado — se cargarán thumbs inmediatamente.');
+    }
+
+    // Render
+    function render(list){
+      contenedor.innerHTML = '';
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.className = 'archivos-empty';
+        empty.textContent = 'No se encontraron cursos activos.';
+        contenedor.appendChild(empty);
+        return;
+      }
+      list.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'archivo-card';
+
+        const img = document.createElement('img');
+        img.className = 'archivo-card-thumb';
+        img.alt = `Vista previa de ${item.filename}`;
+        img.loading = 'lazy';
+        img._itemRef = item;
+
+        if (io) io.observe(img);
+        else {
+          // cargar inmediatamente si no hay IO
+          getThumb(item).then(src => { img.src = src; }).catch(()=>{ img.src = GENERIC_ICONS.pdf; });
+        }
+
+        const body = document.createElement('div');
+        body.className = 'archivo-card-body';
+        body.innerHTML = `<div class="archivo-card-title">${item.nombre}</div><small>${item.filename}</small>`;
+
+        card.appendChild(img);
+        card.appendChild(body);
+        card.addEventListener('click', () => abrirArchivo(item));
+        contenedor.appendChild(card);
+      });
+    }
+
+    // abrir archivo con protección contra errores
+    async function abrirArchivo(item) {
+      try {
+        if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
+        const extension = ext(item.archivo);
+        const absolute = item.archivo;
+
+        if (lastPdfBlobUrl) { try{ URL.revokeObjectURL(lastPdfBlobUrl); }catch(e){} lastPdfBlobUrl = null; }
+
+        if (extension === 'ppt' || extension === 'pptx') {
+          visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+          if (modal) modal.style.display = 'flex';
+          return;
+        }
+
+        if (extension === 'pdf') {
+          try {
+            // intentamos fetch → blob (evita Content-Disposition: attachment)
+            const resp = await fetch(absolute, { cache: 'no-store', credentials: 'omit' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const ab = await resp.arrayBuffer();
+            const blob = new Blob([ab], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(blob);
+            lastPdfBlobUrl = blobUrl;
+            visor.src = blobUrl;
             if (modal) modal.style.display = 'flex';
             return;
+          } catch (err) {
+            console.warn('fetch PDF falló (CORS/otro), intentando fallback', err);
+            // fallback: probar cdns
+            const filename = (item.filename || item.archivo.split('/').pop());
+            const candidates = [
+              `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+              `https://raw.githack.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+              `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(filename)}`,
+              item.archivo
+            ];
+            for (const url of candidates) {
+              try {
+                const h = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+                if (h.ok) {
+                  visor.src = url;
+                  if (modal) modal.style.display = 'flex';
+                  return;
+                }
+              } catch(e) { /* HEAD puede fallar por CORS; sigue */ }
+            }
+            window.open(absolute, '_blank');
+            return;
           }
-        } catch(e) {
-          // HEAD puede fallar por CORS; ignoramos y probamos el siguiente
         }
+
+        // fallback genérico
+        visor.src = absolute;
+        if (modal) modal.style.display = 'flex';
+      } catch(openErr){
+        console.error('Error al abrir archivo', openErr);
+        alert('Ocurrió un error al intentar abrir el archivo. Revisa la consola para más detalles.');
       }
-      // último recurso: abrir en pestaña nueva (el navegador decidirá mostrar o descargar)
-      window.open(absolute, '_blank');
-      return;
     }
-  }
 
-  // fallback genérico
-  visor.src = absolute;
-  if (modal) modal.style.display = 'flex';
-}
+    function cerrarModal(){
+      if (modal) modal.style.display = 'none';
+      if (visor) visor.src = '';
+      if (lastPdfBlobUrl) {
+        try { URL.revokeObjectURL(lastPdfBlobUrl); } catch(e) {}
+        lastPdfBlobUrl = null;
+      }
+    }
+    if (cerrar) cerrar.addEventListener('click', cerrarModal);
+    window.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
 
-// reemplaza cerrarModal por esto (asegura revocar blob)
-function cerrarModal(){
-  if (modal) modal.style.display = 'none';
-  if (visor) {
-    visor.src = '';
+    // finalmente renderizamos
+    console.info('Items a renderizar:', items.map(i => i.filename));
+    render(items);
+    showStatus('Lista cargada correctamente.');
+  } catch (err) {
+    console.error('Error crítico en initArchivosCursos:', err);
+    // si algo falla, dejamos un mensaje visible en el contenedor
+    const contenedor = document.getElementById("archivosCursos");
+    if (contenedor) contenedor.innerHTML = `<div class="archivos-error">Error cargando archivos. Revisa la consola: ${String(err.message || err)}</div>`;
   }
-  if (lastPdfBlobUrl) {
-    try { URL.revokeObjectURL(lastPdfBlobUrl); } catch(e) {}
-    lastPdfBlobUrl = null;
-  }
-}
-
+})(); // end IIFE
+</script>
 
 
 
@@ -496,6 +458,7 @@ function cerrarModal(){
 
 </body>
 </html>
+
 
 
 
