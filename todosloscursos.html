@@ -129,73 +129,95 @@
 
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
-(async function initArchivosCursos(){
+(async function initArchivosCursos() {
+  // IDs que debe tener tu HTML (ajusta si tus IDs son distintos)
   const contenedor = document.getElementById("archivosCursos");
   const modal = document.getElementById("archivoModal");
   const visor = document.getElementById("visorArchivo");
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
 
-  // Buscador
-  const inputBusqueda = document.getElementById("buscadorArchivos");
-  const btnLimpiar = document.getElementById("limpiarBusqueda");
+  if (!contenedor) {
+    console.error('No se encontró el contenedor: id="archivosCursos". Revisa tu HTML.');
+    return;
+  }
 
-  // Utilidades
+  // Config GitHub
+  const OWNER = "HubEducationArgentina"; // tu usuario/org
+  const REPO = "AiesecinArgentina"; // tu repo
+  const PATH = "archivos_cursos"; // carpeta dentro del repo
+  const BRANCH = "main"; // cambia si tu rama es "master"
+
+  // Utils
   const prettyName = (s) => {
-    const base = decodeURIComponent(String(s||'')).split('/').pop()
-      .replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
+    const base = decodeURIComponent(String(s || '')).split('/').pop()
+      .replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
     return base.charAt(0).toUpperCase() + base.slice(1);
   };
-  const ext = (p) => (p.split('.').pop() || '').toLowerCase();
+  const ext = (p) => (String(p || '').split('.').pop() || '').toLowerCase();
+  const norm = (txt) => String(txt || '')
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .toLowerCase().trim();
+  const thumbCache = new Map();
 
-  // Normaliza texto para búsqueda: sin acentos, minúsculas
-  const norm = (txt) => String(txt||'')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu,'')
-    .toLowerCase()
-    .trim();
-
-  // 1) Intenta leer manifest JSON si existe: archivos_cursos/index.json
-  async function tryJsonManifest(){
+  // 1) try index.json
+  async function tryJsonManifest() {
     try {
-      const r = await fetch('archivos_cursos/index.json', { cache: 'no-store' });
-      if (!r.ok) return null;
+      const url = `${PATH}/index.json`;
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) {
+        console.info('index.json no encontrado (status ' + r.status + ')');
+        return null;
+      }
       const arr = await r.json();
       if (!Array.isArray(arr)) return null;
-      return arr
-        .filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
-        .map(f => ({ nombre: prettyName(f), archivo: `archivos_cursos/${f}` }));
-    } catch { return null; }
+      return arr.filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
+        .map(f => ({
+          nombre: prettyName(f),
+          archivo: `${PATH}/${f}`
+        }));
+    } catch (e) {
+      console.warn('tryJsonManifest error', e);
+      return null;
+    }
   }
 
-  // 2) Si tu hosting lista directorios, intenta parsear enlaces de archivos
-  async function tryDirectoryListing(){
+  // 2) GitHub API fallback
+  async function tryGitHubListing() {
     try {
-      const r = await fetch('archivos_cursos/', { cache: 'no-store' });
-      if (!r.ok) return null;
-      const html = await r.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const links = Array.from(doc.querySelectorAll('a'))
-        .map(a => a.getAttribute('href') || '')
-        .filter(h => /\.(pdf|ppt|pptx)$/i.test(h));
-      const files = links.map(h => h.replace(/^\//,''));
-      return files.map(file => {
-        const fname = file.split('/').pop();
-        return { nombre: prettyName(fname), archivo: `archivos_cursos/${fname}` };
-      });
-    } catch { return null; }
+      const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
+      const r = await fetch(api, { cache: 'no-store' });
+      if (!r.ok) {
+        console.warn('GitHub API returned', r.status, r.statusText);
+        return null;
+      }
+      const arr = await r.json();
+      console.info('GitHub API files:', arr.map(a => a.name));
+      return arr
+        .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
+        .map(f => ({
+          nombre: prettyName(f.name),
+          archivo: f.download_url ||
+            `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
+        }));
+    } catch (e) {
+      console.warn('tryGitHubListing error', e);
+      return null;
+    }
   }
 
-  const dedupeByArchivo = (arr) => {
-    const seen = new Set();
-    return arr.filter(it => (seen.has(it.archivo) ? false : (seen.add(it.archivo), true)));
-  };
-
+  // Ejecuta intentos
   let archivos = await tryJsonManifest();
-  if (!archivos || archivos.length === 0) archivos = await tryDirectoryListing();
-  archivos = Array.isArray(archivos) ? dedupeByArchivo(archivos) : [];
+  if (!archivos || archivos.length === 0) archivos = await tryGitHubListing();
+  archivos = Array.isArray(archivos) ? archivos : [];
 
-  // Precalcula campos de búsqueda
+  if (!archivos.length) {
+    contenedor.innerHTML = '<div class="archivos-empty">No se encontraron cursos activos.</div>';
+    console.info('No hay archivos listados en index.json ni en la API de GitHub.');
+    return;
+  }
+
+  // Prepara items de búsqueda
   const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
     return {
@@ -205,78 +227,153 @@
     };
   });
 
-  // Render helper
-  function render(list){
+  // Generación de thumbs
+  const GENERIC_ICONS = {
+    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
+        <rect width="160" height="120" rx="8" fill="#dfe7f2"/>
+        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text>
+      </svg>`
+    ),
+    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
+        <rect width="160" height="120" rx="8" fill="#ffe4d6"/>
+        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text>
+      </svg>`
+    )
+  };
+
+  async function loadImageIfExists(url) {
+    try {
+      const safe = encodeURI(url);
+      const r = await fetch(safe, { method: 'HEAD', cache: 'no-store' });
+      if (r.ok) return safe;
+    } catch (e) { }
+    return null;
+  }
+
+  async function renderPdfThumb(url, maxW = 480) {
+    if (thumbCache.has(url)) return thumbCache.get(url);
+    if (typeof pdfjsLib === 'undefined') {
+      console.warn('pdfjsLib no disponible — añade PDF.js en <head> si quieres miniaturas PDF.');
+      return GENERIC_ICONS.pdf;
+    }
+    try {
+      const loadingTask = pdfjsLib.getDocument({ url, withCredentials: false });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(maxW / viewport.width, 1.5);
+      const v2 = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = v2.width;
+      canvas.height = v2.height;
+      await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+      const dataURL = canvas.toDataURL('image/webp', 0.9);
+      thumbCache.set(url, dataURL);
+      return dataURL;
+    } catch (e) {
+      console.warn('renderPdfThumb error', e);
+      return GENERIC_ICONS.pdf;
+    }
+  }
+
+  async function getThumb(item) {
+    const e = ext(item.archivo);
+    if (e === 'pdf') return await renderPdfThumb(item.archivo);
+    if (e === 'ppt' || e === 'pptx') {
+      const base = item.archivo.replace(/\.[^/.]+$/i, '');
+      const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
+      for (const c of candidateExts) {
+        const found = await loadImageIfExists(base + c);
+        if (found) return found;
+      }
+      return GENERIC_ICONS.ppt;
+    }
+    return GENERIC_ICONS.pdf;
+  }
+
+  // IntersectionObserver para lazy-load
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(async entry => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      io.unobserve(img);
+      const item = img._itemRef;
+      img.src = await getThumb(item);
+    });
+  }, { rootMargin: '200px 0px' });
+
+  // Render function
+  function render(list) {
     contenedor.innerHTML = '';
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'archivos-empty';
-      const q = inputBusqueda.value.trim();
-      empty.textContent = q ? `Sin resultados para “${q}”.` : 'No se encontraron cursos activos.';
+      empty.textContent = 'No se encontraron cursos activos.';
       contenedor.appendChild(empty);
       return;
     }
     list.forEach(item => {
-      const card = document.createElement("div");
-      card.className = "archivo-card";
-      card.innerHTML = `
+      const card = document.createElement('div');
+      card.className = 'archivo-card';
+
+      const img = document.createElement('img');
+      img.className = 'archivo-card-thumb';
+      img.alt = `Vista previa de ${item.filename}`;
+      img.loading = 'lazy';
+      img._itemRef = item;
+      io.observe(img);
+
+      const body = document.createElement('div');
+      body.className = 'archivo-card-body';
+      body.innerHTML = `
         <div class="archivo-card-title">${item.nombre}</div>
         <small>${item.filename}</small>
       `;
-      card.addEventListener("click", () => abrirArchivo(item));
-      contenedor.appendChild(card);
+
+      card.appendChild(img);
+      card.appendChild(body);
+      card.addEventListener('click', () => abrirArchivo(item));
+
+      if (contenedor) contenedor.appendChild(card);
+      else console.error('contenedor desapareció antes de appendChild');
     });
   }
 
-  // Filtro por palabras (AND)
-  function filtrar(q){
-    const tokens = norm(q).split(/\s+/).filter(Boolean);
-    if (!tokens.length) return items;
-    return items.filter(it => tokens.every(t => it._search.includes(t)));
-  }
-
-  // Debounce
-  let t;
-  function onInput(){
-    clearTimeout(t);
-    t = setTimeout(() => render(filtrar(inputBusqueda.value)), 120);
-  }
-
-  // Inicializa render
+  // Inicial
   render(items);
 
-  // Eventos búsqueda
-  inputBusqueda.addEventListener('input', onInput);
-  btnLimpiar.addEventListener('click', () => {
-    inputBusqueda.value = '';
-    render(items);
-    inputBusqueda.focus();
-  });
-
-  // Modal
+  // Modal open
   function abrirArchivo(item) {
-    modalTitle.textContent = item.nombre || prettyName(item.archivo);
+    if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
     const extension = ext(item.archivo);
+    const absolute = item.archivo;
+
     if (extension === 'ppt' || extension === 'pptx') {
-      const absolute = new URL(item.archivo, location.href).href;
       visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     } else {
-      visor.src = item.archivo;
+      visor.src = absolute;
     }
-    modal.style.display = "flex";
+    if (modal) modal.style.display = 'flex';
   }
 
-  function cerrarModal(){
-    modal.style.display = "none";
-    visor.src = "";
+  function cerrarModal() {
+    if (modal) modal.style.display = 'none';
+    if (visor) visor.src = '';
   }
 
-  cerrar.addEventListener('click', cerrarModal);
-  window.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
-})();
+  if (cerrar) cerrar.addEventListener('click', cerrarModal);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) cerrarModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cerrarModal();
+  });
+
+})(); // end IIFE
 </script>
-
 
 
 
@@ -304,4 +401,5 @@
 
 </body>
 </html>
+
 
