@@ -128,166 +128,253 @@
 
 
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
+
 <script>
-(async function initArchivosCursosDebug(){
+(async function initArchivosCursos() {
+  // IDs que debe tener tu HTML (ajusta si tus IDs son distintos)
   const contenedor = document.getElementById("archivosCursos");
   const modal = document.getElementById("archivoModal");
   const visor = document.getElementById("visorArchivo");
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
-  if (!contenedor) { console.error('No se encontró el contenedor id="archivosCursos".'); return; }
 
-  const OWNER = "HubEducationArgentina";
-  const REPO  = "AiesecinArgentina";
-  const PATH  = "archivos_cursos";
-  const BRANCH = "main";
+  if (!contenedor) {
+    console.error('No se encontró el contenedor: id="archivosCursos". Revisa tu HTML.');
+    return;
+  }
 
+  // Config GitHub
+  const OWNER = "HubEducationArgentina"; // tu usuario/org
+  const REPO = "AiesecinArgentina"; // tu repo
+  const PATH = "archivos_cursos"; // carpeta dentro del repo
+  const BRANCH = "main"; // cambia si tu rama es "master"
+
+  // Utils
   const prettyName = (s) => {
-    const base = decodeURIComponent(String(s||'')).split('/').pop().replace(/\.[^/.]+$/,'').replace(/[-_]+/g,' ');
+    const base = decodeURIComponent(String(s || '')).split('/').pop()
+      .replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
     return base.charAt(0).toUpperCase() + base.slice(1);
   };
-  const ext = (p) => (String(p||'').split('.').pop() || '').toLowerCase();
+  const ext = (p) => (String(p || '').split('.').pop() || '').toLowerCase();
+  const norm = (txt) => String(txt || '')
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .toLowerCase().trim();
+  const thumbCache = new Map();
 
-  // helpers para mostrar panel debug
-  function makePanelHtml({title, note, content}) {
-    return `<div style="border:1px solid #ddd;padding:10px;margin:8px 0;border-radius:6px;background:#fff;">
-      <strong>${title}</strong>${note ? `<div style="color:#666;font-size:12px">${note}</div>` : ''}
-      <pre style="white-space:pre-wrap;max-height:220px;overflow:auto;margin-top:8px;background:#f7f7f9;padding:8px;border-radius:4px;">${content}</pre>
-    </div>`;
-  }
-  function showDebugHtml(html) {
-    contenedor.innerHTML = `<div style="font-family:system-ui,Arial;max-width:1000px;margin:8px;">${html}</div>`;
-  }
-
-  // 1) try manifest file (index.json)
-  let manifestRaw = null;
-  try {
-    const url = `${PATH}/index.json`;
-    const r = await fetch(url, { cache: 'no-store' });
-    manifestRaw = {
-      ok: r.ok,
-      status: r.status,
-      statusText: r.statusText,
-      url
-    };
-    if (r.ok) {
-      try { manifestRaw.json = await r.json(); } catch(e) { manifestRaw.jsonError = String(e); }
-    } else {
-      manifestRaw.text = await r.text().catch(()=>null);
+  // 1) try index.json
+  async function tryJsonManifest() {
+    try {
+      const url = `${PATH}/index.json`;
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) {
+        console.info('index.json no encontrado (status ' + r.status + ')');
+        return null;
+      }
+      const arr = await r.json();
+      if (!Array.isArray(arr)) return null;
+      return arr.filter(f => /\.(pdf|ppt|pptx)$/i.test(f))
+        .map(f => ({
+          nombre: prettyName(f),
+          archivo: `${PATH}/${f}`
+        }));
+    } catch (e) {
+      console.warn('tryJsonManifest error', e);
+      return null;
     }
-  } catch(e) {
-    manifestRaw = { error: String(e) };
   }
 
-  // 2) try GitHub API listing
-  let apiRaw = null;
-  try {
-    const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
-    const r2 = await fetch(api, { cache: 'no-store' });
-    apiRaw = { ok: r2.ok, status: r2.status, statusText: r2.statusText, api };
-    if (r2.ok) {
-      try { apiRaw.json = await r2.json(); } catch(e) { apiRaw.jsonError = String(e); }
-    } else {
-      apiRaw.text = await r2.text().catch(()=>null);
+  // 2) GitHub API fallback
+  async function tryGitHubListing() {
+    try {
+      const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
+      const r = await fetch(api, { cache: 'no-store' });
+      if (!r.ok) {
+        console.warn('GitHub API returned', r.status, r.statusText);
+        return null;
+      }
+      const arr = await r.json();
+      console.info('GitHub API files:', arr.map(a => a.name));
+      return arr
+        .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
+        .map(f => ({
+          nombre: prettyName(f.name),
+          archivo: f.download_url ||
+            `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
+        }));
+    } catch (e) {
+      console.warn('tryGitHubListing error', e);
+      return null;
     }
-  } catch(e) {
-    apiRaw = { error: String(e) };
   }
 
-  // Construcción de archivos según manifest/api (cómo lo hace tu script)
-  let archivos = [];
-  try {
-    if (manifestRaw && manifestRaw.ok && Array.isArray(manifestRaw.json)) {
-      archivos = manifestRaw.json.filter(f => /\.(pdf|ppt|pptx)$/i.test(f)).map(f => ({ nombre: prettyName(f), archivo: `${PATH}/${f}` }));
-    }
-  } catch(e) { /* ignore */ }
+  // Ejecuta intentos
+  let archivos = await tryJsonManifest();
+  if (!archivos || archivos.length === 0) archivos = await tryGitHubListing();
+  archivos = Array.isArray(archivos) ? archivos : [];
 
-  if (!archivos.length && apiRaw && apiRaw.ok && Array.isArray(apiRaw.json)) {
-    archivos = apiRaw.json
-      .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
-      .map(f => ({ nombre: prettyName(f.name), archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}` }));
+  if (!archivos.length) {
+    contenedor.innerHTML = '<div class="archivos-empty">No se encontraron cursos activos.</div>';
+    console.info('No hay archivos listados en index.json ni en la API de GitHub.');
+    return;
   }
 
-  // items preparados
-  const items = (archivos||[]).map(it => {
+  // Prepara items de búsqueda
+  const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
-    return { ...it, filename, _ext: ext(filename) };
+    return {
+      ...it,
+      filename,
+      _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
+    };
   });
 
-  // Mostrar paneles debug
-  const panels = [];
-  panels.push(makePanelHtml({
-    title: 'Manifest (index.json) -> resultado de fetch',
-    note: 'Si index.json no existe veremos status != 200 o error.',
-    content: JSON.stringify(manifestRaw, null, 2)
-  }));
-  panels.push(makePanelHtml({
-    title: 'GitHub API -> resultado de fetch',
-    note: 'Si hay límites o repo privado veremos 403/401 u otro mensaje.',
-    content: JSON.stringify(apiRaw, null, 2)
-  }));
-  panels.push(makePanelHtml({
-    title: 'Array "archivos" construido',
-    content: JSON.stringify(archivos, null, 2)
-  }));
-  panels.push(makePanelHtml({
-    title: 'Array "items" final que se intentará renderizar',
-    content: JSON.stringify(items, null, 2)
-  }));
+  // Generación de thumbs
+  const GENERIC_ICONS = {
+    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
+        <rect width="160" height="120" rx="8" fill="#dfe7f2"/>
+        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#3a5fa0">PDF</text>
+      </svg>`
+    ),
+    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
+        <rect width="160" height="120" rx="8" fill="#ffe4d6"/>
+        <text x="50%" y="55%" font-family="Arial,Helvetica,sans-serif" font-size="36" text-anchor="middle" fill="#cc4d12">PPT</text>
+      </svg>`
+    )
+  };
 
-  // Mostrar también listado simple de filenames para verificar exactamente qué se intentará renderizar
-  panels.push(makePanelHtml({
-    title: 'Listado rápido de filenames',
-    content: (items.length ? items.map(i => i.filename).join('\n') : '(vacío)')
-  }));
-
-  showDebugHtml(panels.join(''));
-
-  // Si hay items, hacemos render simple (sin miniaturas) para comprobar DOM
-  if (items.length) {
-    // render simplificado para ver si la UI funciona
-    const holder = document.createElement('div');
-    holder.style.display = 'grid';
-    holder.style.gridTemplateColumns = 'repeat(auto-fit,minmax(220px,1fr))';
-    holder.style.gap = '12px';
-    holder.style.marginTop = '12px';
-    items.forEach(it => {
-      const card = document.createElement('div');
-      card.style.border = '1px solid #ddd';
-      card.style.padding = '10px';
-      card.style.borderRadius = '6px';
-      card.style.background = '#fff';
-      card.style.cursor = 'pointer';
-      card.innerHTML = `<div style="font-weight:600">${it.nombre}</div><div style="font-size:13px;color:#666">${it.filename}</div><div style="margin-top:6px;font-size:12px;color:#888">ext: ${it._ext}</div>`;
-      card.addEventListener('click', () => {
-        alert('Click en: ' + it.filename + '\n(esto prueba que el click funciona)');
-      });
-      holder.appendChild(card);
-    });
-    // añadir el holder al final del panel debug (visible)
-    contenedor.appendChild(holder);
-  } else {
-    // Si items está vacío, dejamos mensaje claro y sugerencias
-    const suggest = `
-      <div style="margin-top:10px;color:#333">
-        <strong>Sugerencias:</strong>
-        <ul style="color:#333">
-          <li>Verifica que la carpeta <code>${PATH}</code> existe y contiene archivos con extensión .pdf/.ppt/.pptx.</li>
-          <li>Si usas GitHub API: revisa en Network la petición a <code>https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}</code> y pega aquí su respuesta (status / body).</li>
-          <li>Si el repo es privado, la API devolverá 404/403. Hazlo público o usa otro método.</li>
-          <li>Confirma que el nombre de la carpeta y el branch coinciden exactamente (sensible a mayúsculas).</li>
-        </ul>
-      </div>`;
-    contenedor.innerHTML += suggest;
+  async function loadImageIfExists(url) {
+    try {
+      const safe = encodeURI(url);
+      const r = await fetch(safe, { method: 'HEAD', cache: 'no-store' });
+      if (r.ok) return safe;
+    } catch (e) { }
+    return null;
   }
 
-})();
+  async function renderPdfThumb(url, maxW = 480) {
+    if (thumbCache.has(url)) return thumbCache.get(url);
+    if (typeof pdfjsLib === 'undefined') {
+      console.warn('pdfjsLib no disponible — añade PDF.js en <head> si quieres miniaturas PDF.');
+      return GENERIC_ICONS.pdf;
+    }
+    try {
+      const loadingTask = pdfjsLib.getDocument({ url, withCredentials: false });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(maxW / viewport.width, 1.5);
+      const v2 = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = v2.width;
+      canvas.height = v2.height;
+      await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+      const dataURL = canvas.toDataURL('image/webp', 0.9);
+      thumbCache.set(url, dataURL);
+      return dataURL;
+    } catch (e) {
+      console.warn('renderPdfThumb error', e);
+      return GENERIC_ICONS.pdf;
+    }
+  }
+
+  async function getThumb(item) {
+    const e = ext(item.archivo);
+    if (e === 'pdf') return await renderPdfThumb(item.archivo);
+    if (e === 'ppt' || e === 'pptx') {
+      const base = item.archivo.replace(/\.[^/.]+$/i, '');
+      const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
+      for (const c of candidateExts) {
+        const found = await loadImageIfExists(base + c);
+        if (found) return found;
+      }
+      return GENERIC_ICONS.ppt;
+    }
+    return GENERIC_ICONS.pdf;
+  }
+
+  // IntersectionObserver para lazy-load
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(async entry => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      io.unobserve(img);
+      const item = img._itemRef;
+      img.src = await getThumb(item);
+    });
+  }, { rootMargin: '200px 0px' });
+
+  // Render function
+  function render(list) {
+    contenedor.innerHTML = '';
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'archivos-empty';
+      empty.textContent = 'No se encontraron cursos activos.';
+      contenedor.appendChild(empty);
+      return;
+    }
+    list.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'archivo-card';
+
+      const img = document.createElement('img');
+      img.className = 'archivo-card-thumb';
+      img.alt = `Vista previa de ${item.filename}`;
+      img.loading = 'lazy';
+      img._itemRef = item;
+      io.observe(img);
+
+      const body = document.createElement('div');
+      body.className = 'archivo-card-body';
+      body.innerHTML = `
+        <div class="archivo-card-title">${item.nombre}</div>
+        <small>${item.filename}</small>
+      `;
+
+      card.appendChild(img);
+      card.appendChild(body);
+      card.addEventListener('click', () => abrirArchivo(item));
+
+      if (contenedor) contenedor.appendChild(card);
+      else console.error('contenedor desapareció antes de appendChild');
+    });
+  }
+
+  // Inicial
+  render(items);
+
+  // Modal open
+  function abrirArchivo(item) {
+    if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
+    const extension = ext(item.archivo);
+    const absolute = item.archivo;
+
+    if (extension === 'ppt' || extension === 'pptx') {
+      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+    } else {
+      visor.src = absolute;
+    }
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function cerrarModal() {
+    if (modal) modal.style.display = 'none';
+    if (visor) visor.src = '';
+  }
+
+  if (cerrar) cerrar.addEventListener('click', cerrarModal);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) cerrarModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cerrarModal();
+  });
+
+})(); // end IIFE
 </script>
-
-
-
-    
-
 
 
 
@@ -313,6 +400,7 @@
 
 </body>
 </html>
+
 
 
 
