@@ -1,41 +1,116 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Bienvenido - Plataforma Educativa</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
+  <meta charset="UTF-8">
+  <title>Bienvenido - Plataforma Educativa</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
     // Indica la ruta del worker de PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    </script>
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  </script>
+  <style>
+    /* estilos añadidos para el buscador + select */
+    .archivos-search {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      margin: 1rem 2rem;
+    }
+    #buscadorArchivos { flex: 1; padding: .5rem .75rem; border-radius:6px; border:1px solid #ddd; }
+    #filtroCarpeta { padding:.5rem .6rem; border-radius:6px; border:1px solid #ddd; background:#fff; }
+    #limpiarBusqueda { padding:.35rem .6rem; border-radius:6px; border:1px solid transparent; background:transparent; cursor:pointer; font-size:18px; }
+    /* resto de estilos tuyos (mantenidos) */
+    .archivos-cursos {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin: 2rem;
+    }
+    .archivo-modal-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #222;
+    }
+    .archivo-card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      color: #222;
+    }
+    .archivo-card {
+      background: #f1f1f1;
+      border-radius: 12px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      user-select: none;
+    }
+    .archivo-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .archivo-card small { display:block; font-weight:400; opacity:.7; margin-top:.25rem; }
 
+    .archivo-modal {
+      display: none;
+      position: fixed;
+      z-index: 2000;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+    }
+    .archivo-modal-content {
+      position: relative;
+      width: min(1100px, 90vw);
+      height: min(85vh, 900px);
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .archivo-modal-header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:.75rem 1rem; border-bottom:1px solid #eee; background:#fafafa;
+    }
+    .archivo-modal-title { margin:0; font-size:1rem; font-weight:600; }
+    #visorArchivo { flex:1; width:100%; height:100%; }
+    .cerrar-modal {
+      background: transparent; border: 0; font-size: 28px; line-height: 1;
+      color: #444; cursor: pointer; padding:.25rem .5rem;
+    }
+    .archivos-empty {
+      margin: 2rem; opacity: .7; font-style: italic;
+    }
+  </style>
 </head>
 <body>
-
 
 <!-- HEADER: logo - progress module - nav -->
 <header>
   <div class="logo">AIESEC en ARGENTINA | HUB EDUCACIONAL</div>
-
-
   <nav>
     <a href="index.html">Inicio</a>
     <a href="todosloscursos.html">Todos los cursos</a>
   </nav>
 </header>
 
-
-<!-- BUSCADOR -->
+<!-- BUSCADOR + FILTRO DE CARPETA -->
 <div class="archivos-search">
   <label for="buscadorArchivos" class="sr-only">Buscador</label>
   <input id="buscadorArchivos" type="text" placeholder="Buscar cursos (ej: OGX, Líderes, Marketing)" />
+  <select id="filtroCarpeta" aria-label="Filtrar por carpeta">
+    <option value="">Todas las carpetas</option>
+  </select>
   <button id="limpiarBusqueda" type="button" aria-label="Limpiar búsqueda">&times;</button>
 </div>
-
-
 
 <!-- MODULO ARCHIVOS DE CURSOS (AUTO-DISCOVERY) -->
 <section id="archivosCursos" class="archivos-cursos"></section>
@@ -50,80 +125,6 @@
     <iframe id="visorArchivo" src="" frameborder="0"></iframe>
   </div>
 </div>
-
-<style>
-.archivos-cursos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
-  margin: 2rem;
-}
-.archivo-modal-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #222;   /* <--- cambia este valor */
-}
-.archivo-card-title {
-  font-size: 1rem;       /* tamaño mediano-grande */
-  font-weight: 600;      /* negrita */
-  margin-bottom: 0.25rem;
-  color: #222;           /* cámbialo según paleta */
-}
-.archivo-card {
-  background: #f1f1f1;
-  border-radius: 12px;
-  padding: 1.25rem 1rem;
-  text-align: center;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  user-select: none;
-}
-.archivo-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-.archivo-card small { display:block; font-weight:400; opacity:.7; margin-top:.25rem; }
-
-.archivo-modal {
-  display: none;
-  position: fixed;
-  z-index: 2000;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  justify-content: center;
-  align-items: center;
-}
-.archivo-modal-content {
-  position: relative;
-  width: min(1100px, 90vw);
-  height: min(85vh, 900px);
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.archivo-modal-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:.75rem 1rem; border-bottom:1px solid #eee; background:#fafafa;
-}
-.archivo-modal-title { margin:0; font-size:1rem; font-weight:600; }
-#visorArchivo { flex:1; width:100%; height:100%; }
-.cerrar-modal {
-  background: transparent; border: 0; font-size: 28px; line-height: 1;
-  color: #444; cursor: pointer; padding:.25rem .5rem;
-}
-.archivos-empty {
-  margin: 2rem; opacity: .7; font-style: italic;
-}
-</style>
-
-
-
-
-
 
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
@@ -166,7 +167,6 @@
 
   // ---------- Try manifest relative, then raw.githubusercontent, then GitHub API ----------
   async function tryJsonManifest() {
-    // 1) Ruta relativa en el sitio: ./archivos_cursos/index.json
     try {
       const urlRel = `${PATH}/index.json`;
       console.info('Intentando manifest relativo:', urlRel);
@@ -178,7 +178,6 @@
         console.info('manifest relativo no encontrado (status ' + r.status + ')');
       }
 
-      // 2) Intento raw.githubusercontent (útil si abres el HTML desde file:// o no usás GH Pages)
       const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/index.json`;
       console.info('Intentando manifest raw.githubusercontent:', rawUrl);
       r = await fetch(rawUrl, { cache: 'no-store' });
@@ -204,7 +203,6 @@
       });
       if (!r.ok) {
         console.warn('GitHub API returned', r.status, r.statusText);
-        // Si es 404/403, intentamos usar raw.githubusercontent para listar manualmente (no hay list API sin token)
         if (r.status === 404) {
           console.info('Comprobá que el repo/carpeta sean públicos y que OWNER/REPO/PATH estén correctos.');
         }
@@ -238,20 +236,64 @@
     return;
   }
 
+  // --- Nueva: derivar carpeta (subfolder) de la ruta del archivo ---
+  function folderOf(archivoPath) {
+    try {
+      // normalizamos a string y decodificamos por si hay %20 u otros
+      const p = decodeURIComponent(String(archivoPath || ''));
+      const parts = p.split('/').filter(Boolean);
+      // intentamos localizar la posición del PATH (archivos_cursos)
+      const idx = parts.lastIndexOf(PATH);
+      if (idx >= 0 && parts.length > idx + 2) {
+        // archivos_cursos / SUBFOLDER / filename => devolver SUBFOLDER
+        return parts[idx + 1];
+      }
+      // si la ruta tiene estructura .../archivos_cursos/subfolder/file -> lo manejamos
+      // si no, intentar tomar el penúltimo segmento (si hay al menos 2 elementos)
+      if (parts.length >= 2) return parts[parts.length - 2];
+      return ''; // raíz o no hay subcarpeta
+    } catch (e) {
+      return '';
+    }
+  }
+
   const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
+    const carpeta = folderOf(it.archivo) || '';
     return {
       ...it,
       filename,
+      carpeta,
       _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
     };
   });
 
-  // --- BUSCADOR (poner justo después de crear `items` y antes de render(items)) ---
+  // --- llenar select de carpetas dinámicamente ---
+  const filtroSelect = document.getElementById('filtroCarpeta');
+  function populateFolderFilter(list) {
+    const set = new Set();
+    list.forEach(i => {
+      const c = (i.carpeta || '').trim();
+      if (c) set.add(c);
+    });
+    // orden alfabético
+    const arr = Array.from(set).sort((a,b)=> a.localeCompare(b, undefined, {sensitivity:'base'}));
+    // Primero limpiamos y ponemos opción "Todas"
+    if (!filtroSelect) return;
+    filtroSelect.innerHTML = `<option value="">Todas las carpetas</option>`;
+    arr.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      filtroSelect.appendChild(opt);
+    });
+  }
+  populateFolderFilter(items);
+
+  // --- BUSCADOR (ajustado para considerar filtro de carpeta) ---
   const buscador = document.getElementById('buscadorArchivos');
   const limpiarBtn = document.getElementById('limpiarBusqueda');
 
-  // debounce simple
   function debounce(fn, wait = 250) {
     let t;
     return (...args) => {
@@ -260,23 +302,23 @@
     };
   }
 
-  // función que aplica el filtro y re-renderiza
   function applyFilter(q) {
     const qnorm = norm(q || '');
-    if (!qnorm) {
-      render(items);
-      return;
+    const selectedCarpeta = filtroSelect ? filtroSelect.value : '';
+    let filtrados = items;
+    if (selectedCarpeta) {
+      filtrados = filtrados.filter(it => (it.carpeta || '') === selectedCarpeta);
     }
-    const filtrados = items.filter(it => it._search.includes(qnorm));
+    if (qnorm) {
+      filtrados = filtrados.filter(it => it._search.includes(qnorm));
+    }
     render(filtrados);
   }
 
-  // listener con debounce en input
   if (buscador) {
     buscador.addEventListener('input', debounce((e) => {
       applyFilter(e.target.value);
     }, 180));
-    // tecla Escape para limpiar rápido
     buscador.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         buscador.value = '';
@@ -287,24 +329,32 @@
     console.warn('Buscador no encontrado: id="buscadorArchivos"');
   }
 
-  // limpiar botón (X) — pone el campo vacío y reinicia la lista
   if (limpiarBtn) {
-    limpiarBtn.addEventListener('click', () => {
+    limparHandler = () => {
       if (buscador) buscador.value = '';
+      if (filtroSelect) filtroSelect.value = '';
       applyFilter('');
       buscador && buscador.focus();
-    });
+    };
+    limpiarBtn.addEventListener('click', limparHandler);
   } else {
     console.info('No se detectó el botón limpiarBusqueda (id="limpiarBusqueda").');
   }
 
-  // Si quieres, puedes inicializar el input vacío (útil si la página recarga con valor)
+  // cuando cambie el filtro de carpeta aplicamos el filtro combinado
+  if (filtroSelect) {
+    filtroSelect.addEventListener('change', () => {
+      applyFilter(buscador ? buscador.value : '');
+    });
+  }
+
   if (buscador && buscador.value.trim()) {
     applyFilter(buscador.value);
+  } else {
+    render(items);
   }
-  // --- FIN BUSCADOR ---
+  // --- FIN BUSCADOR + FILTRO ---
 
-    
   // Simple generic icons
   const GENERIC_ICONS = {
     pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -404,7 +454,7 @@
       body.className = 'archivo-card-body';
       body.innerHTML = `
         <div class="archivo-card-title">${item.nombre}</div>
-        <small>${item.filename}</small>
+        <small>${item.filename}${item.carpeta ? ' — ' + item.carpeta : ''}</small>
       `;
 
       card.appendChild(img);
@@ -414,8 +464,6 @@
       contenedor.appendChild(card);
     });
   }
-
-  render(items);
 
   function abrirArchivo(item) {
     if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
@@ -445,33 +493,9 @@
 })(); // end IIFE
 </script>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <footer class="footer-fixed">
-    © 2025 Hub Educacional — AIESEC en Argentina®. Todos los derechos reservados.
+  © 2025 Hub Educacional — AIESEC en Argentina®. Todos los derechos reservados.
 </footer>
-
-
-
-
-
 
 </body>
 </html>
-
-
-
-
-
