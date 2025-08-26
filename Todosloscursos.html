@@ -126,6 +126,23 @@
   </div>
 </div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
 (async function initArchivosCursos() {
@@ -146,7 +163,7 @@
   const PATH = "archivos_cursos";
   const BRANCH = "main";
 
-  // estilos mínimos para la thumb (si lo preferís mover a style.css)
+  // estilos mínimos para la thumb
   const style = document.createElement('style');
   style.textContent = `
     .archivo-card-thumb { width:100%; height:140px; object-fit:cover; border-radius:8px; background:#eee; display:block; margin-bottom:.75rem; }
@@ -165,7 +182,7 @@
     .toLowerCase().trim();
   const thumbCache = new Map();
 
-  // ---------- Try manifest relative, then raw.githubusercontent, then GitHub API ----------
+  // ----- Intentar manifest relativo, luego raw, luego GitHub trees (recursivo) -----
   async function tryJsonManifest() {
     try {
       const urlRel = `${PATH}/index.json`;
@@ -177,8 +194,6 @@
       } else {
         console.info('manifest relativo no encontrado (status ' + r.status + ')');
       }
-
-      
 
       const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/index.json`;
       console.info('Intentando manifest raw.githubusercontent:', rawUrl);
@@ -195,45 +210,35 @@
     return null;
   }
 
-async function tryGitHubListing() {
-  try {
-    // Árbol recursivo del branch
-    const api = `https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`;
-    console.info('Consultando GitHub Trees API:', api);
-    const r = await fetch(api, {
-      headers: { Accept: 'application/vnd.github.v3+json' },
-      cache: 'no-store'
-    });
-    if (!r.ok) {
-      console.warn('GitHub Trees API returned', r.status, r.statusText);
-      return null;
-    }
-    const data = await r.json();
-    if (!data || !Array.isArray(data.tree)) {
-      console.warn('Respuesta Trees inválida:', data);
-      return null;
-    }
-
-    // Nos quedamos con blobs (archivos) que estén dentro de PATH y tengan extensión válida
-    const exts = /\.(pdf|ppt|pptx)$/i;
-    const list = data.tree
-      .filter(n => n.type === 'blob' && n.path && n.path.startsWith(`${PATH}/`) && exts.test(n.path))
-      .map(n => {
-        // Construimos URL RAW preservando las barras de subcarpetas (usar encodeURI, no encodeURIComponent)
-        const raw = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(n.path)}`;
-        return {
-          nombre: prettyName(n.path),
-          archivo: raw
-        };
+  async function tryGitHubListing() {
+    try {
+      const api = `https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`;
+      console.info('Consultando GitHub Trees API:', api);
+      const r = await fetch(api, {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+        cache: 'no-store'
       });
-
-    return list;
-  } catch (e) {
-    console.warn('tryGitHubListing (trees) error', e);
-    return null;
+      if (!r.ok) {
+        console.warn('GitHub Trees API returned', r.status, r.statusText);
+        return null;
+      }
+      const data = await r.json();
+      if (!data || !Array.isArray(data.tree)) {
+        console.warn('Respuesta Trees inválida:', data);
+        return null;
+      }
+      const exts = /\.(pdf|ppt|pptx)$/i;
+      return data.tree
+        .filter(n => n.type === 'blob' && n.path && n.path.startsWith(`${PATH}/`) && exts.test(n.path))
+        .map(n => ({
+          nombre: prettyName(n.path),
+          archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(n.path)}`
+        }));
+    } catch (e) {
+      console.warn('tryGitHubListing (trees) error', e);
+      return null;
+    }
   }
-}
-
 
   // Ejecuta intentos
   let archivos = await tryJsonManifest();
@@ -246,28 +251,21 @@ async function tryGitHubListing() {
     return;
   }
 
-  // --- Nueva: derivar carpeta (subfolder) de la ruta del archivo ---
+  // --- derivar carpeta (subfolder) de la ruta del archivo ---
   function folderOf(archivoPath) {
     try {
       const marker = `/${PATH}/`;
       const s = String(archivoPath || '');
-  
-      // Tomamos la parte DESPUÉS de "/archivos_cursos/"
       const idx = s.indexOf(marker);
       let tail = idx >= 0 ? s.slice(idx + marker.length) : s;
-  
-      // Decodifica %20, %2F, etc. (si falla, seguimos con la original)
       try { tail = decodeURIComponent(tail); } catch (_) {}
-  
-      // tail ahora es algo como: "subcarpeta/archivo.pdf" o "archivo.pdf"
       const segs = tail.split('/').filter(Boolean);
-      if (segs.length >= 2) return segs[0];   // primera parte = subcarpeta
-      return '';                              // no hay subcarpeta
-    } catch {
+      if (segs.length >= 2) return segs[0];
+      return '';
+    } catch (e) {
       return '';
     }
   }
-
 
   const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
@@ -283,15 +281,13 @@ async function tryGitHubListing() {
   // --- llenar select de carpetas dinámicamente ---
   const filtroSelect = document.getElementById('filtroCarpeta');
   function populateFolderFilter(list) {
+    if (!filtroSelect) return;
     const set = new Set();
     list.forEach(i => {
       const c = (i.carpeta || '').trim();
       if (c) set.add(c);
     });
-    // orden alfabético
     const arr = Array.from(set).sort((a,b)=> a.localeCompare(b, undefined, {sensitivity:'base'}));
-    // Primero limpiamos y ponemos opción "Todas"
-    if (!filtroSelect) return;
     filtroSelect.innerHTML = `<option value="">Todas las carpetas</option>`;
     arr.forEach(c => {
       const opt = document.createElement('option');
@@ -342,7 +338,7 @@ async function tryGitHubListing() {
   }
 
   if (limpiarBtn) {
-    limparHandler = () => {
+    const limparHandler = () => {
       if (buscador) buscador.value = '';
       if (filtroSelect) filtroSelect.value = '';
       applyFilter('');
@@ -353,26 +349,18 @@ async function tryGitHubListing() {
     console.info('No se detectó el botón limpiarBusqueda (id="limpiarBusqueda").');
   }
 
-  // cuando cambie el filtro de carpeta aplicamos el filtro combinado
   if (filtroSelect) {
     filtroSelect.addEventListener('change', () => {
       applyFilter(buscador ? buscador.value : '');
     });
   }
 
-  if (buscador && buscador.value.trim()) {
-    applyFilter(buscador.value);
-  } else {
-    render(items);
-  }
-  // --- FIN BUSCADOR + FILTRO ---
-
-  // Simple generic icons
+  // --- ICONOS y thumbs ---
   const GENERIC_ICONS = {
-    pdf: 'data:image/svg+xml;utf8,' + encodeURI(
+    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`
     ),
-    ppt: 'data:image/svg+xml;utf8,' + encodeURI(
+    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`
     )
   };
@@ -427,21 +415,28 @@ async function tryGitHubListing() {
     return GENERIC_ICONS.pdf;
   }
 
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(async entry => {
-      if (!entry.isIntersecting) return;
-      const img = entry.target;
-      io.unobserve(img);
-      const item = img._itemRef;
-      try {
-        img.src = await getThumb(item);
-      } catch (err) {
-        console.warn('Error cargando thumb', err);
-        img.src = GENERIC_ICONS.pdf;
-      }
-    });
-  }, { rootMargin: '200px 0px' });
+  // --- Observer lazy singleton (evita errores de orden) ---
+  let _io = null;
+  function getObserver() {
+    if (_io) return _io;
+    _io = new IntersectionObserver(entries => {
+      entries.forEach(async entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        _io.unobserve(img);
+        const item = img._itemRef;
+        try {
+          img.src = await getThumb(item);
+        } catch (err) {
+          console.warn('Error cargando thumb', err);
+          img.src = GENERIC_ICONS.pdf;
+        }
+      });
+    }, { rootMargin: '200px 0px' });
+    return _io;
+  }
 
+  // --- Renderizado ---
   function render(list) {
     contenedor.innerHTML = '';
     if (!list.length) {
@@ -460,7 +455,8 @@ async function tryGitHubListing() {
       img.alt = `Vista previa de ${item.filename}`;
       img.loading = 'lazy';
       img._itemRef = item;
-      io.observe(img);
+      // usamos el observer lazy
+      getObserver().observe(img);
 
       const body = document.createElement('div');
       body.className = 'archivo-card-body';
@@ -482,7 +478,7 @@ async function tryGitHubListing() {
     const extension = ext(item.archivo);
     const absolute = item.archivo;
     if (extension === 'ppt' || extension === 'pptx') {
-      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURI(absolute)}`;
+      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     } else {
       visor.src = absolute;
     }
@@ -502,8 +498,30 @@ async function tryGitHubListing() {
     if (e.key === 'Escape') cerrarModal();
   });
 
+  // Llama a render por primera vez
+  if (buscador && buscador.value.trim()) {
+    applyFilter(buscador.value);
+  } else {
+    render(items);
+  }
+
 })(); // end IIFE
 </script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
 
 <footer class="footer-fixed">
   © 2025 Hub Educacional — AIESEC en Argentina®. Todos los derechos reservados.
@@ -511,4 +529,5 @@ async function tryGitHubListing() {
 
 </body>
 </html>
+
 
