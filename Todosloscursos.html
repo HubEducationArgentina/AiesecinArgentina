@@ -193,37 +193,45 @@
     return null;
   }
 
-  async function tryGitHubListing() {
-    try {
-      const api = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`;
-      console.info('Consultando GitHub API:', api);
-      const r = await fetch(api, {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-        cache: 'no-store'
-      });
-      if (!r.ok) {
-        console.warn('GitHub API returned', r.status, r.statusText);
-        if (r.status === 404) {
-          console.info('Comprobá que el repo/carpeta sean públicos y que OWNER/REPO/PATH estén correctos.');
-        }
-        return null;
-      }
-      const arr = await r.json();
-      if (!Array.isArray(arr)) {
-        console.warn('Respuesta GitHub no es array:', arr);
-        return null;
-      }
-      return arr
-        .filter(f => f && f.name && /\.(pdf|ppt|pptx)$/i.test(f.name))
-        .map(f => ({
-          nombre: prettyName(f.name),
-          archivo: f.download_url || `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f.name)}`
-        }));
-    } catch (e) {
-      console.warn('tryGitHubListing error', e);
+async function tryGitHubListing() {
+  try {
+    // Árbol recursivo del branch
+    const api = `https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`;
+    console.info('Consultando GitHub Trees API:', api);
+    const r = await fetch(api, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store'
+    });
+    if (!r.ok) {
+      console.warn('GitHub Trees API returned', r.status, r.statusText);
       return null;
     }
+    const data = await r.json();
+    if (!data || !Array.isArray(data.tree)) {
+      console.warn('Respuesta Trees inválida:', data);
+      return null;
+    }
+
+    // Nos quedamos con blobs (archivos) que estén dentro de PATH y tengan extensión válida
+    const exts = /\.(pdf|ppt|pptx)$/i;
+    const list = data.tree
+      .filter(n => n.type === 'blob' && n.path && n.path.startsWith(`${PATH}/`) && exts.test(n.path))
+      .map(n => {
+        // Construimos URL RAW preservando las barras de subcarpetas (usar encodeURI, no encodeURIComponent)
+        const raw = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(n.path)}`;
+        return {
+          nombre: prettyName(n.path),
+          archivo: raw
+        };
+      });
+
+    return list;
+  } catch (e) {
+    console.warn('tryGitHubListing (trees) error', e);
+    return null;
   }
+}
+
 
   // Ejecuta intentos
   let archivos = await tryJsonManifest();
@@ -239,23 +247,25 @@
   // --- Nueva: derivar carpeta (subfolder) de la ruta del archivo ---
   function folderOf(archivoPath) {
     try {
-      // normalizamos a string y decodificamos por si hay %20 u otros
-      const p = decodeURIComponent(String(archivoPath || ''));
-      const parts = p.split('/').filter(Boolean);
-      // intentamos localizar la posición del PATH (archivos_cursos)
-      const idx = parts.lastIndexOf(PATH);
-      if (idx >= 0 && parts.length > idx + 2) {
-        // archivos_cursos / SUBFOLDER / filename => devolver SUBFOLDER
-        return parts[idx + 1];
-      }
-      // si la ruta tiene estructura .../archivos_cursos/subfolder/file -> lo manejamos
-      // si no, intentar tomar el penúltimo segmento (si hay al menos 2 elementos)
-      if (parts.length >= 2) return parts[parts.length - 2];
-      return ''; // raíz o no hay subcarpeta
-    } catch (e) {
+      const marker = `/${PATH}/`;
+      const s = String(archivoPath || '');
+  
+      // Tomamos la parte DESPUÉS de "/archivos_cursos/"
+      const idx = s.indexOf(marker);
+      let tail = idx >= 0 ? s.slice(idx + marker.length) : s;
+  
+      // Decodifica %20, %2F, etc. (si falla, seguimos con la original)
+      try { tail = decodeURIComponent(tail); } catch (_) {}
+  
+      // tail ahora es algo como: "subcarpeta/archivo.pdf" o "archivo.pdf"
+      const segs = tail.split('/').filter(Boolean);
+      if (segs.length >= 2) return segs[0];   // primera parte = subcarpeta
+      return '';                              // no hay subcarpeta
+    } catch {
       return '';
     }
   }
+
 
   const items = archivos.map(it => {
     const filename = it.archivo.split('/').pop();
@@ -499,4 +509,5 @@
 
 </body>
 </html>
+
 
