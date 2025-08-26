@@ -81,13 +81,79 @@
       padding:.75rem 1rem; border-bottom:1px solid #eee; background:#fafafa;
     }
     .archivo-modal-title { margin:0; font-size:1rem; font-weight:600; }
-    #visorArchivo { flex:1; width:100%; height:100%; }
+    #visorArchivo { flex:1; width:100%; height:100%; border:0; display:block; }
     .cerrar-modal {
       background: transparent; border: 0; font-size: 28px; line-height: 1;
       color: #444; cursor: pointer; padding:.25rem .5rem;
     }
     .archivos-empty {
       margin: 2rem; opacity: .7; font-style: italic;
+    }
+
+    /* ---------- NUEVOS ESTILOS: modal con sidebar de pestañas ---------- */
+    .archivo-modal-body {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0; /* importante en flex containers */
+    }
+    .archivo-modal-left {
+      width: 220px;
+      border-right: 1px solid #eee;
+      padding: 0.75rem;
+      background: #fafafa;
+      box-sizing: border-box;
+      display:flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .archivo-tab-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: .6rem .7rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      font-weight:700;
+    }
+    .archivo-tab-btn[aria-selected="true"] {
+      background: #fff;
+      border-color: #e2e8f0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+    .archivo-modal-right {
+      flex: 1 1 auto;
+      min-width: 0; /* importante para iframes y contenido en flex */
+      display: flex;
+      flex-direction: column;
+    }
+    .archivo-tab-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: .6rem;
+      box-sizing: border-box;
+      overflow: auto;
+      display: none;
+    }
+    .archivo-tab-content.active { display: block; }
+
+    /* video styling */
+    .archivo-video {
+      width: 100%;
+      max-height: 100%;
+      height: calc(100% - 0.5rem);
+      border-radius: 8px;
+      outline: none;
+    }
+
+    @media (max-width:800px) {
+      .archivo-modal-content { width: 96vw; height: 92vh; }
+      .archivo-modal-left { width: 160px; }
+    }
+    @media (max-width:560px) {
+      .archivo-modal-body { flex-direction: column; }
+      .archivo-modal-left { width: 100%; border-right: none; border-bottom: 1px solid #eee; padding: .5rem; }
     }
   </style>
 </head>
@@ -178,44 +244,49 @@
   <button id="limpiarBusqueda" type="button" aria-label="Eliminar filtros">Eliminar filtros</button>
 </div>
 
-
-
-
-
-
-
-
 <!-- MODULO ARCHIVOS DE CURSOS (AUTO-DISCOVERY) -->
 <section id="archivosCursos" class="archivos-cursos"></section>
 
-<!-- Modal visor de archivo con título -->
-<div id="archivoModal" class="archivo-modal">
-  <div class="archivo-modal-content">
+<!-- Modal visor de archivo con título y pestañas a la izquierda -->
+<div id="archivoModal" class="archivo-modal" aria-hidden="true">
+  <div class="archivo-modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="archivo-modal-header">
       <h3 id="modalTitle" class="archivo-modal-title">Archivo</h3>
       <button class="cerrar-modal" id="cerrarModal" aria-label="Cerrar">&times;</button>
     </div>
-    <iframe id="visorArchivo" src="" frameborder="0"></iframe>
+
+    <div class="archivo-modal-body">
+      <!-- LEFT: pestañas -->
+      <aside class="archivo-modal-left" id="modalLeft">
+        <button class="archivo-tab-btn" id="tabBtnSlides" role="tab" aria-selected="true" data-tab="slides">Diapositivas</button>
+        <button class="archivo-tab-btn" id="tabBtnVideo" role="tab" aria-selected="false" data-tab="video">Video</button>
+        <button class="archivo-tab-btn" id="tabBtnLink" role="tab" aria-selected="false" data-tab="link">Link</button>
+      </aside>
+
+      <!-- RIGHT: contenidos de cada pestaña -->
+      <div class="archivo-modal-right">
+        <div id="tabSlides" class="archivo-tab-content active" role="tabpanel">
+          <!-- Reutilizamos el iframe existente para las diapositivas -->
+          <iframe id="visorArchivo" src="" frameborder="0" title="Visor de archivo"></iframe>
+        </div>
+
+        <div id="tabVideo" class="archivo-tab-content" role="tabpanel" aria-hidden="true">
+          <!-- Aquí se cargará dinamicamente el video o un mensaje -->
+          <div id="videoContainer" style="display:flex; align-items:center; justify-content:center; height:100%;">
+            <div style="opacity:.75;">Buscando video...</div>
+          </div>
+        </div>
+
+        <div id="tabLink" class="archivo-tab-content" role="tabpanel" aria-hidden="true">
+          <div id="linkContainer" style="padding:.5rem;">
+            aqui ira el link
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
@@ -225,6 +296,15 @@
   const visor = document.getElementById("visorArchivo");
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
+
+  const tabBtnSlides = document.getElementById('tabBtnSlides');
+  const tabBtnVideo = document.getElementById('tabBtnVideo');
+  const tabBtnLink = document.getElementById('tabBtnLink');
+  const tabSlides = document.getElementById('tabSlides');
+  const tabVideo = document.getElementById('tabVideo');
+  const tabLink = document.getElementById('tabLink');
+  const videoContainer = document.getElementById('videoContainer');
+  const linkContainer = document.getElementById('linkContainer');
 
   if (!contenedor) {
     console.error('No se encontró el contenedor: id="archivosCursos". Revisa tu HTML.');
@@ -274,7 +354,7 @@
       r = await fetch(rawUrl, { cache: 'no-store' });
       if (r.ok) {
         const arr2 = await r.json();
-        if (Array.isArray(arr2)) return arr2.map(f => ({ nombre: prettyName(f), archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURI(f)}` }));
+        if (Array.isArray(arr2)) return arr2.map(f => ({ nombre: prettyName(f), archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(f)}` }));
       } else {
         console.info('manifest raw.githubusercontent no encontrado (status ' + r.status + ')');
       }
@@ -341,91 +421,78 @@
     }
   }
 
-// --- Normalizar / filtrar solo pdf|ppt|pptx y quitar duplicados (versión reforzada) ---
-(function prepareItems() {
-  const validExt = /\.(pdf|ppt|pptx)$/i;
-  const seen = new Set();
-  const out = [];
-  const removed = [];
+  // --- Normalizar / filtrar solo pdf|ppt|pptx y quitar duplicados (versión reforzada) ---
+  (function prepareItems() {
+    const validExt = /\.(pdf|ppt|pptx)$/i;
+    const seen = new Set();
+    const out = [];
+    const removed = [];
 
-  for (const a of archivos) {
-    // Obtener ruta/rawPath desde string u objeto (adapta si tu manifest usa otra propiedad)
-    let rawPath = '';
-    if (typeof a === 'string') rawPath = a;
-    else if (a && typeof a === 'object') rawPath = a.archivo || a.path || a.download_url || a.name || '';
-    rawPath = String(rawPath || '').trim();
-    if (!rawPath) continue;
+    for (const a of archivos) {
+      let rawPath = '';
+      if (typeof a === 'string') rawPath = a;
+      else if (a && typeof a === 'object') rawPath = a.archivo || a.path || a.download_url || a.name || '';
+      rawPath = String(rawPath || '').trim();
+      if (!rawPath) continue;
 
-    // Convertir a "tail" relativo: la parte después de "/archivos_cursos/"
-    let tail = rawPath;
-    try {
-      if (/^https?:\/\//i.test(rawPath)) {
-        // si es URL, extraemos pathname (evita query)
-        const u = new URL(rawPath);
-        tail = u.pathname;
+      let tail = rawPath;
+      try {
+        if (/^https?:\/\//i.test(rawPath)) {
+          const u = new URL(rawPath);
+          tail = u.pathname;
+        }
+      } catch (e) { }
+
+      const marker = `/${PATH}/`;
+      if (tail.indexOf(marker) >= 0) {
+        tail = tail.slice(tail.indexOf(marker) + marker.length);
+      } else if (tail.startsWith(`${PATH}/`)) {
+        tail = tail.slice((`${PATH}/`).length);
+      } else {
+        tail = tail.replace(/^\/+/, '');
       }
-    } catch (e) { /* si falla, mantenemos rawPath */ }
 
-    // localizar el segmento PATH en la ruta y recortar lo que venga después
-    const marker = `/${PATH}/`;
-    if (tail.indexOf(marker) >= 0) {
-      tail = tail.slice(tail.indexOf(marker) + marker.length);
-    } else if (tail.startsWith(`${PATH}/`)) {
-      tail = tail.slice((`${PATH}/`).length);
-    } else {
-      // si no aparece, quitar posibles slashes iniciales
-      tail = tail.replace(/^\/+/, '');
+      tail = tail.split('?')[0].split('#')[0];
+      try { tail = decodeURIComponent(tail); } catch(e) { }
+      tail = tail.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase().trim();
+
+      if (!validExt.test(tail)) continue;
+
+      const key = tail;
+      if (seen.has(key)) {
+        removed.push({ key, rawPath });
+        continue;
+      }
+      seen.add(key);
+
+      let archivoUrl = rawPath;
+      if (!/^https?:\/\//i.test(archivoUrl)) {
+        let candidate = archivoUrl;
+        if (!candidate.startsWith(`${PATH}/`)) candidate = `${PATH}/${candidate}`.replace(/\/\/+/g,'/');
+        archivoUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(candidate)}`;
+      }
+
+      out.push({
+        nombre: prettyName(tail),
+        archivo: archivoUrl
+      });
     }
 
-    // quitar query/hash, decodificar y normalizar
-    tail = tail.split('?')[0].split('#')[0];
-    try { tail = decodeURIComponent(tail); } catch(e) { /* ignore */ }
-    tail = tail.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase().trim();
+    if (removed.length) console.warn('Se eliminaron duplicados detectados (ejemplos):', removed.slice(0,10));
+    archivos = out;
+  })();
 
-    // debe tener una extensión válida
-    if (!validExt.test(tail)) continue;
-
-    // clave de deduplicación: ruta relativa normalizada (subcarpeta/archivo.ext)
-    const key = tail;
-
-    if (seen.has(key)) {
-      removed.push({ key, rawPath });
-      continue;
-    }
-    seen.add(key);
-
-    // construir URL raw final si no es ya una URL absoluta
-    let archivoUrl = rawPath;
-    if (!/^https?:\/\//i.test(archivoUrl)) {
-      // si rawPath ya era relativo sin PATH/ prefijamos PATH/
-      let candidate = archivoUrl;
-      if (!candidate.startsWith(`${PATH}/`)) candidate = `${PATH}/${candidate}`.replace(/\/\/+/g,'/');
-      archivoUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(candidate)}`;
-    }
-
-    out.push({
-      nombre: prettyName(tail),
-      archivo: archivoUrl
-    });
-  }
-
-  if (removed.length) console.warn('Se eliminaron duplicados detectados (ejemplos):', removed.slice(0,10));
-  archivos = out;
-})();
-
-// ahora creamos items desde archivos filtrados y sin duplicados
-const items = archivos.map(it => {
-  const filename = it.archivo.split('/').pop();
-  const carpeta = folderOf(it.archivo) || '';
-  return {
-    ...it,
-    filename,
-    carpeta,
-    _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
-  };
-});
-
-
+  // ahora creamos items desde archivos filtrados y sin duplicados
+  const items = archivos.map(it => {
+    const filename = it.archivo.split('/').pop();
+    const carpeta = folderOf(it.archivo) || '';
+    return {
+      ...it,
+      filename,
+      carpeta,
+      _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
+    };
+  });
 
   // --- llenar select de carpetas dinámicamente ---
   const filtroSelect = document.getElementById('filtroCarpeta');
@@ -515,21 +582,17 @@ const items = archivos.map(it => {
   };
 
   async function loadImageIfExists(url) {
-  try {
-    // HEAD es más barato si el servidor lo permite
-    const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-    if (r.ok) return url;
-  } catch (e) {
-    // algunos servidores bloquean HEAD; intentar GET como fallback
     try {
-      const r2 = await fetch(url, { method: 'GET', cache: 'no-store' });
-      if (r2.ok) return url;
-    } catch (e2) {
-      // no existe o CORS bloquea
+      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (r.ok) return url;
+    } catch (e) {
+      try {
+        const r2 = await fetch(url, { method: 'GET', cache: 'no-store' });
+        if (r2.ok) return url;
+      } catch (e2) {}
     }
+    return null;
   }
-  return null;
-}
 
   async function renderPdfThumb(url, maxW = 480) {
     if (thumbCache.has(url)) return thumbCache.get(url);
@@ -559,35 +622,28 @@ const items = archivos.map(it => {
   }
 
   async function getThumb(item) {
-  // base sin extensión (preserva las subcarpetas)
-  const base = item.archivo.replace(/\.[^/.]+$/i, '');
-  const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
+    const base = item.archivo.replace(/\.[^/.]+$/i, '');
+    const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
 
-  // 1) Buscar imagenes con el mismo nombre (funciona para pdf/ppt/pptx)
-  for (const c of candidateExts) {
-    try {
-      const candidate = base + c;
-      const found = await loadImageIfExists(candidate);
-      if (found) return found;
-    } catch (e) {
-      // seguir probando
+    for (const c of candidateExts) {
+      try {
+        const candidate = base + c;
+        const found = await loadImageIfExists(candidate);
+        if (found) return found;
+      } catch (e) {}
     }
-  }
 
-  // 2) Si es PDF, intentar renderizar la primera página (si PDF.js está disponible)
-  const e = ext(item.archivo);
-  if (e === 'pdf') {
-    return await renderPdfThumb(item.archivo).catch(() => GENERIC_ICONS.pdf);
-  }
+    const e = ext(item.archivo);
+    if (e === 'pdf') {
+      return await renderPdfThumb(item.archivo).catch(() => GENERIC_ICONS.pdf);
+    }
 
-  // 3) Para PPT/PPTX (ya no hay imagen alternativa), devolver icono PPT genérico
-  if (e === 'ppt' || e === 'pptx') {
-    return GENERIC_ICONS.ppt;
-  }
+    if (e === 'ppt' || e === 'pptx') {
+      return GENERIC_ICONS.ppt;
+    }
 
-  // 4) Fallback genérico
-  return GENERIC_ICONS.pdf;
-}
+    return GENERIC_ICONS.pdf;
+  }
 
   // --- Observer lazy singleton (evita errores de orden) ---
   let _io = null;
@@ -647,21 +703,158 @@ const items = archivos.map(it => {
     });
   }
 
-  function abrirArchivo(item) {
+  /* ========== NUEVA LÓGICA: buscar video con mismo nombre base ========== */
+  async function loadVideoIfExists(url) {
+    try {
+      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (r.ok) return url;
+    } catch (e) {
+      try {
+        const r2 = await fetch(url, { method: 'GET', cache: 'no-store' });
+        if (r2.ok) return url;
+      } catch (e2) {}
+    }
+    return null;
+  }
+
+  /**
+   * Dado un item (archivo pdf|ppt), intenta encontrar un video con mismo nombre base
+   * devuelve URL o null
+   */
+  async function findVideoForItem(item) {
+    const videoExts = ['.mp4', '.webm', '.ogg'];
+    // obtener base: todo antes de la última extensión
+    const original = item.archivo;
+    let base = original.replace(/\.[^/.]+$/i, '');
+    // if original is a raw.githubusercontent URL, simple replace; otherwise construct raw url similar to earlier
+    const candidates = [];
+
+    // si la url ya es raw.githubusercontent, probamos sustituyendo la extensión
+    if (/raw\.githubusercontent\.com/i.test(base)) {
+      for (const ve of videoExts) candidates.push(base + ve);
+    } else {
+      // intentar construir candidato relativo en PATH
+      // intentamos extraer la parte después de `/archivos_cursos/`
+      try {
+        let u = new URL(original);
+        // si es URL, usaremos pathname
+        const idx = u.pathname.indexOf(`/${PATH}/`);
+        let tail = idx >= 0 ? u.pathname.slice(idx + (`/${PATH}/`).length) : u.pathname;
+        tail = tail.split('?')[0].split('#')[0];
+        tail = tail.replace(/^\/+/, '');
+        const baseRel = `${PATH}/${tail}`.replace(/\.[^/.]+$/,'');
+        for (const ve of videoExts) {
+          candidates.push(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(baseRel + ve)}`);
+        }
+      } catch (e) {
+        // fallback: usar base + ext directly (puede fallar, pero lo intentamos)
+        for (const ve of videoExts) candidates.push(base + ve);
+      }
+      // también probar base + video ext directly
+      for (const ve of videoExts) candidates.push(base + ve);
+    }
+
+    // dedupe
+    const seen = new Set();
+    const final = candidates.filter(c => {
+      if (seen.has(c)) return false;
+      seen.add(c);
+      return true;
+    });
+
+    for (const cand of final) {
+      try {
+        const ok = await loadVideoIfExists(cand);
+        if (ok) return ok;
+      } catch (e) {
+        // seguir con siguiente
+      }
+    }
+    return null;
+  }
+
+  /* ========== Manejo de pestañas ========== */
+  function selectTab(name) {
+    // botones
+    [tabBtnSlides, tabBtnVideo, tabBtnLink].forEach(b => {
+      const t = b.dataset.tab;
+      const selected = t === name;
+      b.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+    // contenidos
+    tabSlides.classList.toggle('active', name === 'slides');
+    tabVideo.classList.toggle('active', name === 'video');
+    tabLink.classList.toggle('active', name === 'link');
+
+    tabSlides.setAttribute('aria-hidden', name !== 'slides');
+    tabVideo.setAttribute('aria-hidden', name !== 'video');
+    tabLink.setAttribute('aria-hidden', name !== 'link');
+  }
+
+  tabBtnSlides.addEventListener('click', () => selectTab('slides'));
+  tabBtnVideo.addEventListener('click', () => selectTab('video'));
+  tabBtnLink.addEventListener('click', () => selectTab('link'));
+
+  /* ========== abrirArchivo mejorado (usa pestañas) ========== */
+  let currentItem = null;
+
+  async function abrirArchivo(item) {
+    currentItem = item;
     if (modalTitle) modalTitle.textContent = item.nombre || prettyName(item.archivo);
+
+    // mostrar por defecto la pestaña Diapositivas
+    selectTab('slides');
+
     const extension = ext(item.archivo);
     const absolute = item.archivo;
+
+    // Slides: ppt/pptx -> office viewer; pdf -> raw url in iframe (o el visor que prefieras)
     if (extension === 'ppt' || extension === 'pptx') {
       visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
     } else {
+      // PDFs: mostrar directamente en iframe (puede descargarse si no permite CORS)
       visor.src = absolute;
     }
-    if (modal) modal.style.display = 'flex';
+
+    // Video tab: mostrar busqueda (async) y luego resultado
+    videoContainer.innerHTML = '<div style="opacity:.8">Buscando video con el mismo nombre...</div>';
+    try {
+      const videoUrl = await findVideoForItem(item);
+      if (videoUrl) {
+        // construir elemento video
+        videoContainer.innerHTML = '';
+        const v = document.createElement('video');
+        v.className = 'archivo-video';
+        v.controls = true;
+        v.setAttribute('playsinline', '');
+        v.src = videoUrl;
+        // si quieres, poster podría ser la thumb (omitido por simplicidad)
+        videoContainer.appendChild(v);
+      } else {
+        videoContainer.innerHTML = '<div style="opacity:.7;color:#151515;padding: .5rem;">No hay video asignado.</div>';
+      }
+    } catch (e) {
+      console.warn('Error buscando video', e);
+      videoContainer.innerHTML = '<div style="opacity:.7; padding: .5rem;">No hay video asignado</div>';
+    }
+
+    // Link tab: por ahora mensaje placeholder. Si quieres, aquí podrías generar un link dinámico basándote en item.
+    linkContainer.innerHTML = '<divstyle="opacity:.7;color:#151515;padding: .5rem;">Link de evaluación asignado.</div>';
+
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden','false');
+    }
   }
 
   function cerrarModal() {
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden','true');
+    }
     if (visor) visor.src = '';
+    // limpiar video
+    if (videoContainer) videoContainer.innerHTML = '';
   }
 
   if (cerrar) cerrar.addEventListener('click', cerrarModal);
@@ -682,42 +875,9 @@ const items = archivos.map(it => {
 })(); // end IIFE
 </script>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <footer class="footer-fixed">
   © 2025 Hub Educacional — AIESEC en Argentina®. Todos los derechos reservados.
 </footer>
 
 </body>
 </html>
-
