@@ -178,12 +178,14 @@
         console.info('manifest relativo no encontrado (status ' + r.status + ')');
       }
 
+      
+
       const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/index.json`;
       console.info('Intentando manifest raw.githubusercontent:', rawUrl);
       r = await fetch(rawUrl, { cache: 'no-store' });
       if (r.ok) {
         const arr2 = await r.json();
-        if (Array.isArray(arr2)) return arr2.map(f => ({ nombre: prettyName(f), archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURIComponent(f)}` }));
+        if (Array.isArray(arr2)) return arr2.map(f => ({ nombre: prettyName(f), archivo: `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${PATH}/${encodeURI(f)}` }));
       } else {
         console.info('manifest raw.githubusercontent no encontrado (status ' + r.status + ')');
       }
@@ -367,10 +369,10 @@ async function tryGitHubListing() {
 
   // Simple generic icons
   const GENERIC_ICONS = {
-    pdf: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    pdf: 'data:image/svg+xml;utf8,' + encodeURI(
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#dfe7f2"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#3a5fa0">PDF</text></svg>`
     ),
-    ppt: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    ppt: 'data:image/svg+xml;utf8,' + encodeURI(
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" rx="8" fill="#ffe4d6"/><text x="50%" y="55%" font-family="Arial" font-size="28" text-anchor="middle" fill="#cc4d12">PPT</text></svg>`
     )
   };
@@ -480,7 +482,7 @@ async function tryGitHubListing() {
     const extension = ext(item.archivo);
     const absolute = item.archivo;
     if (extension === 'ppt' || extension === 'pptx') {
-      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+      visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURI(absolute)}`;
     } else {
       visor.src = absolute;
     }
@@ -509,5 +511,4 @@ async function tryGitHubListing() {
 
 </body>
 </html>
-
 
