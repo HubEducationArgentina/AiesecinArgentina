@@ -103,14 +103,87 @@
 </header>
 
 <!-- BUSCADOR + FILTRO DE CARPETA -->
+<style>
+  /* estilos para el buscador + select + botón */
+ .archivos-search {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  margin: 1rem 2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Input principal toma el espacio disponible pero puede encoger (importantísimo min-width:0) */
+#buscadorArchivos {
+  flex: 1 1 auto;      /* crecer y encoger */
+  min-width: 0;        /* permite que el input se reduzca dentro del flex sin forzar overflow */
+  padding: .5rem .75rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+/* Select ocupa sólo lo necesario (no 100%), con ancho máximo y mínimo controlados */
+#filtroCarpeta {
+  flex: 0 0 auto;      /* no crecer, no encoger por defecto */
+  width: auto;
+  min-width: 140px;    /* ajusta según necesites */
+  max-width: 320px;    /* evita que se haga gigante en pantallas grandes */
+  padding: .45rem .6rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+/* Botón a la derecha: margin-left:auto lo empuja; además forzamos que no se solape */
+#limpiarBusqueda {
+  flex: 0 0 auto;
+  margin-left: auto;   /* EMPUJA el botón hasta la derecha del contenedor flex */
+  padding: .45rem .75rem;
+  border-radius: 6px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  box-sizing: border-box;
+  z-index: 3;          /* en caso de solapamiento por stacking contexts */
+}
+
+/* Pequeñas mejoras visuales */
+#limpiarBusqueda:hover { background: #f5f5f5; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+
+@media (max-width:480px) {
+  .archivos-search { flex-direction: column; align-items: stretch; gap: .5rem; }
+  #buscadorArchivos { order: 0; width: 100%; }
+  #filtroCarpeta { order: 1; width: 100%; min-width: unset; }
+  #limpiarBusqueda { order: 2; width: 100%; margin-left: 0; }
+}
+
+
+</style>
+
 <div class="archivos-search">
   <label for="buscadorArchivos" class="sr-only">Buscador</label>
   <input id="buscadorArchivos" type="text" placeholder="Buscar cursos (ej: OGX, Marketing)" />
+
+  <label for="filtroCarpeta" class="sr-only">Filtrar por carpeta</label>
   <select id="filtroCarpeta" aria-label="Filtrar por carpeta">
     <option value="">Todas las carpetas</option>
   </select>
-  <button id="limpiarBusqueda" type="button" aria-label="Limpiar búsqueda">&times;</button>
+
+  <button id="limpiarBusqueda" type="button" aria-label="Eliminar filtros">Eliminar filtros</button>
 </div>
+
+
+
+
+
+
+
 
 <!-- MODULO ARCHIVOS DE CURSOS (AUTO-DISCOVERY) -->
 <section id="archivosCursos" class="archivos-cursos"></section>
@@ -142,7 +215,8 @@
 
 
 
-  
+
+
 <!-- SECCIÓN PARA EL SCRIPT Y MÓDULO LÓGICO -->
 <script>
 (async function initArchivosCursos() {
@@ -267,16 +341,91 @@
     }
   }
 
-  const items = archivos.map(it => {
-    const filename = it.archivo.split('/').pop();
-    const carpeta = folderOf(it.archivo) || '';
-    return {
-      ...it,
-      filename,
-      carpeta,
-      _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
-    };
-  });
+// --- Normalizar / filtrar solo pdf|ppt|pptx y quitar duplicados (versión reforzada) ---
+(function prepareItems() {
+  const validExt = /\.(pdf|ppt|pptx)$/i;
+  const seen = new Set();
+  const out = [];
+  const removed = [];
+
+  for (const a of archivos) {
+    // Obtener ruta/rawPath desde string u objeto (adapta si tu manifest usa otra propiedad)
+    let rawPath = '';
+    if (typeof a === 'string') rawPath = a;
+    else if (a && typeof a === 'object') rawPath = a.archivo || a.path || a.download_url || a.name || '';
+    rawPath = String(rawPath || '').trim();
+    if (!rawPath) continue;
+
+    // Convertir a "tail" relativo: la parte después de "/archivos_cursos/"
+    let tail = rawPath;
+    try {
+      if (/^https?:\/\//i.test(rawPath)) {
+        // si es URL, extraemos pathname (evita query)
+        const u = new URL(rawPath);
+        tail = u.pathname;
+      }
+    } catch (e) { /* si falla, mantenemos rawPath */ }
+
+    // localizar el segmento PATH en la ruta y recortar lo que venga después
+    const marker = `/${PATH}/`;
+    if (tail.indexOf(marker) >= 0) {
+      tail = tail.slice(tail.indexOf(marker) + marker.length);
+    } else if (tail.startsWith(`${PATH}/`)) {
+      tail = tail.slice((`${PATH}/`).length);
+    } else {
+      // si no aparece, quitar posibles slashes iniciales
+      tail = tail.replace(/^\/+/, '');
+    }
+
+    // quitar query/hash, decodificar y normalizar
+    tail = tail.split('?')[0].split('#')[0];
+    try { tail = decodeURIComponent(tail); } catch(e) { /* ignore */ }
+    tail = tail.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase().trim();
+
+    // debe tener una extensión válida
+    if (!validExt.test(tail)) continue;
+
+    // clave de deduplicación: ruta relativa normalizada (subcarpeta/archivo.ext)
+    const key = tail;
+
+    if (seen.has(key)) {
+      removed.push({ key, rawPath });
+      continue;
+    }
+    seen.add(key);
+
+    // construir URL raw final si no es ya una URL absoluta
+    let archivoUrl = rawPath;
+    if (!/^https?:\/\//i.test(archivoUrl)) {
+      // si rawPath ya era relativo sin PATH/ prefijamos PATH/
+      let candidate = archivoUrl;
+      if (!candidate.startsWith(`${PATH}/`)) candidate = `${PATH}/${candidate}`.replace(/\/\/+/g,'/');
+      archivoUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(candidate)}`;
+    }
+
+    out.push({
+      nombre: prettyName(tail),
+      archivo: archivoUrl
+    });
+  }
+
+  if (removed.length) console.warn('Se eliminaron duplicados detectados (ejemplos):', removed.slice(0,10));
+  archivos = out;
+})();
+
+// ahora creamos items desde archivos filtrados y sin duplicados
+const items = archivos.map(it => {
+  const filename = it.archivo.split('/').pop();
+  const carpeta = folderOf(it.archivo) || '';
+  return {
+    ...it,
+    filename,
+    carpeta,
+    _search: norm(it.nombre) + ' ' + norm(filename) + ' ' + norm(ext(filename))
+  };
+});
+
+
 
   // --- llenar select de carpetas dinámicamente ---
   const filtroSelect = document.getElementById('filtroCarpeta');
@@ -366,12 +515,21 @@
   };
 
   async function loadImageIfExists(url) {
+  try {
+    // HEAD es más barato si el servidor lo permite
+    const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    if (r.ok) return url;
+  } catch (e) {
+    // algunos servidores bloquean HEAD; intentar GET como fallback
     try {
-      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-      if (r.ok) return url;
-    } catch (e) { }
-    return null;
+      const r2 = await fetch(url, { method: 'GET', cache: 'no-store' });
+      if (r2.ok) return url;
+    } catch (e2) {
+      // no existe o CORS bloquea
+    }
   }
+  return null;
+}
 
   async function renderPdfThumb(url, maxW = 480) {
     if (thumbCache.has(url)) return thumbCache.get(url);
@@ -401,19 +559,35 @@
   }
 
   async function getThumb(item) {
-    const e = ext(item.archivo);
-    if (e === 'pdf') return await renderPdfThumb(item.archivo);
-    if (e === 'ppt' || e === 'pptx') {
-      const base = item.archivo.replace(/\.[^/.]+$/i, '');
-      const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
-      for (const c of candidateExts) {
-        const found = await loadImageIfExists(base + c);
-        if (found) return found;
-      }
-      return GENERIC_ICONS.ppt;
+  // base sin extensión (preserva las subcarpetas)
+  const base = item.archivo.replace(/\.[^/.]+$/i, '');
+  const candidateExts = ['.webp', '.png', '.jpg', '.jpeg'];
+
+  // 1) Buscar imagenes con el mismo nombre (funciona para pdf/ppt/pptx)
+  for (const c of candidateExts) {
+    try {
+      const candidate = base + c;
+      const found = await loadImageIfExists(candidate);
+      if (found) return found;
+    } catch (e) {
+      // seguir probando
     }
-    return GENERIC_ICONS.pdf;
   }
+
+  // 2) Si es PDF, intentar renderizar la primera página (si PDF.js está disponible)
+  const e = ext(item.archivo);
+  if (e === 'pdf') {
+    return await renderPdfThumb(item.archivo).catch(() => GENERIC_ICONS.pdf);
+  }
+
+  // 3) Para PPT/PPTX (ya no hay imagen alternativa), devolver icono PPT genérico
+  if (e === 'ppt' || e === 'pptx') {
+    return GENERIC_ICONS.ppt;
+  }
+
+  // 4) Fallback genérico
+  return GENERIC_ICONS.pdf;
+}
 
   // --- Observer lazy singleton (evita errores de orden) ---
   let _io = null;
@@ -521,7 +695,24 @@
 
 
 
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 <footer class="footer-fixed">
   © 2025 Hub Educacional — AIESEC en Argentina®. Todos los derechos reservados.
@@ -529,5 +720,4 @@
 
 </body>
 </html>
-
 
