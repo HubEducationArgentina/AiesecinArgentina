@@ -297,6 +297,22 @@
   const cerrar = document.getElementById("cerrarModal");
   const modalTitle = document.getElementById("modalTitle");
 
+   // Crear el objeto donde guardaremos los links
+  let linksMap = {};
+   // Cargar los links desde el archivo JSON
+  try {
+    const resp = await fetch("archivos_cursos/Links_HUB.json");
+    const linksData = await resp.json();
+
+    // Creamos un diccionario: { "archivo.pdf": "https://..." }
+    linksMap = Object.fromEntries(linksData.map(it => [it.archivo, it.link]));
+    console.log("Links cargados:", linksMap);
+  } catch (err) {
+    console.error("Error cargando Links_HUB.json:", err);
+  }
+
+
+
   const tabBtnSlides = document.getElementById('tabBtnSlides');
   const tabBtnVideo = document.getElementById('tabBtnVideo');
   const tabBtnLink = document.getElementById('tabBtnLink');
@@ -703,6 +719,15 @@
     });
   }
 
+
+
+
+
+
+
+
+
+
   /* ========== NUEVA LÓGICA: buscar video con mismo nombre base ========== */
   async function loadVideoIfExists(url) {
     try {
@@ -805,30 +830,30 @@
     // mostrar por defecto la pestaña Diapositivas
     selectTab('slides');
 
-    const extension = ext(item.archivo);
+    const extension = ext(item.archivo).toLowerCase();
     const absolute = item.archivo;
 
-    // Slides: ppt/pptx -> office viewer; pdf -> raw url in iframe (o el visor que prefieras)
+    // Slides: manejar PPT/PPTX con Office Viewer, PDFs con pdf.js
     if (extension === 'ppt' || extension === 'pptx') {
       visor.src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absolute)}`;
+    } else if (extension === 'pdf') {
+      visor.src = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(absolute)}`;
     } else {
-      // PDFs: mostrar directamente en iframe (puede descargarse si no permite CORS)
+      // fallback para cualquier otro tipo
       visor.src = absolute;
     }
 
-    // Video tab: mostrar busqueda (async) y luego resultado
+    // Video tab: mostrar búsqueda (async) y luego resultado
     videoContainer.innerHTML = '<div style="opacity:.8">Buscando video con el mismo nombre...</div>';
     try {
       const videoUrl = await findVideoForItem(item);
       if (videoUrl) {
-        // construir elemento video
         videoContainer.innerHTML = '';
         const v = document.createElement('video');
         v.className = 'archivo-video';
         v.controls = true;
         v.setAttribute('playsinline', '');
         v.src = videoUrl;
-        // si quieres, poster podría ser la thumb (omitido por simplicidad)
         videoContainer.appendChild(v);
       } else {
         videoContainer.innerHTML = '<div style="opacity:.7;color:#151515;padding: .5rem;">No hay video asignado.</div>';
@@ -838,13 +863,18 @@
       videoContainer.innerHTML = '<div style="opacity:.7; padding: .5rem;">No hay video asignado</div>';
     }
 
-    linkContainer.innerHTML = '<div style="opacity:.7;color:#151515;padding: .5rem;">Link de evaluación asignado.</div>';
+    // Link tab
+    const linkURL = linksMap[item.filename];
+    linkContainer.innerHTML = linkURL 
+      ? `<a href="${linkURL}" target="_blank" style="color:blue;text-decoration:underline;">Abrir enlace</a>` 
+      : `<div style="opacity:.7;color:#151515;padding: .5rem;">No hay link disponible</div>`;
 
     if (modal) {
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden','false');
     }
   }
+
 
   function cerrarModal() {
     if (modal) {
