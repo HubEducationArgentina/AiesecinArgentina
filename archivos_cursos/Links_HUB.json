@@ -1,5 +1,13 @@
 [
-  { "archivo": "B2B.pdf", "link": "https://ejemplo.com/presentacion1" },
-  { "archivo": "[OGT] Propuesta de valor.pptx", "link": "https://ejemplo.com/curso_avanzado" }
-
+  { "archivo": "B2B.pdf", "link": "" },
+  { "archivo": "[OGT] EP FLOW.pptx", "link": "" },
+  { "archivo": "[OGT] INFO SESSION.pptx", "link": "" },
+  { "archivo": "[OGT] PROPUESTA DE VALOR.pptx", "link": "" },
+  { "archivo": "[OGV] EP FLOW.pptx", "link": "" },
+  { "archivo": "[OGV] INFO SESIÓN.pptx", "link": "" },
+  { "archivo": "[OGV] PROPUESTA DE VALOR.pptx", "link": "" },
+  { "archivo": "Atracción.pptx", "link": "" },
+  { "archivo": "Customer flow.pptx", "link": "" },
+  { "archivo": "IR MANAGEMENT.pptx", "link": "" },
+  { "archivo": "PXP.pptx", "link": "" }
 ]
