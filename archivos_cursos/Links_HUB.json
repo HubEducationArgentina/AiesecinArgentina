@@ -1,5 +1,5 @@
 [
-  { "archivo": "B2B.pdf", "link": "https://www.aaa.com" },
+  { "archivo": "B2B.pdf", "link": "" },
   { "archivo": "[OGT] EP FLOW.pptx", "link": "" },
   { "archivo": "[OGT] INFO SESSION.pptx", "link": "" },
   { "archivo": "[OGT] PROPUESTA DE VALOR.pptx", "link": "" },
@@ -11,5 +11,6 @@
   { "archivo": "IR MANAGEMENT.pptx", "link": "" },
   { "archivo": "PXP.pptx", "link": "" }
 ]
+
 
 
