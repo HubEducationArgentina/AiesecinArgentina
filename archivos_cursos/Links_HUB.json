@@ -1,8 +1,8 @@
 [
   { "archivo": "B2B.pdf", "link": "" },
-  { "archivo": "[OGT] EP FLOW.pptx", "link": "" },
-  { "archivo": "[OGT] INFO SESSION.pptx", "link": "" },
-  { "archivo": "[OGT] PROPUESTA DE VALOR.pptx", "link": "" },
+  { "archivo": "[OGT] EP FLOW.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLSchCetWoYZwxw-Lj7JpJFYeSnOJ0WVM19BLBxiEVo9j3Wggpg/viewform?usp=preview" },
+  { "archivo": "[OGT] INFO SESSION.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLSdmO69KaJDtA42vmBGmSFDIfMxp6cahBU4xDLixpWMemh5GLA/viewform?usp=preview" },
+  { "archivo": "[OGT] PROPUESTA DE VALOR.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLSfuRlyXkd78Rc3NtpK-FPMxJNYhq6ocXo1MGsFYX_X3xMctUA/viewform?usp=preview" },
   { "archivo": "[OGV] EP FLOW.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLScUb28EVMeH1U-J566jqe02ayOpJpuEKvZA6Mzp44Oekn0vaA/viewform?usp=preview" },
   { "archivo": "[OGV] INFO SESSIÓN.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLScd0JhY27SbRyVdor1OamVaXOz2bIFX-rK5qOgrq8XQAKFPWw/viewform?usp=preview" },
   { "archivo": "[OGV] PROPUESTA DE VALOR.pptx", "link": "https://docs.google.com/forms/d/e/1FAIpQLSfG83CKbrJmdJxirBaTSyyCmn5DNziV8soYBuvx7I6CCG2YBw/viewform?usp=preview" },
@@ -11,6 +11,7 @@
   { "archivo": "IR MANAGEMENT.pptx", "link": "" },
   { "archivo": "PXP.pptx", "link": "" }
 ]
+
 
 
 
